@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
 import { GithubConnectFlow } from './GithubConnectFlow'
+import { RosterSection } from './RosterSection'
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -355,6 +356,8 @@ export function SettingsModal(props: {
             )}
           </div>
         </div>
+
+        <RosterSection />
 
         <div className="setting-divider" />
 
