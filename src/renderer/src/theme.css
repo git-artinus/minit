@@ -1,0 +1,557 @@
+/* ============================================================
+   디자인 토큰 — 간격 · 라운드 · 타입 스케일 · 서피스 · 주황 시스템
+   ============================================================ */
+:root {
+  /* 간격 스케일 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* 라운드 */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* 타입 스케일 */
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-base: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+
+  /* 뉴트럴 / 서피스 (라이트 — 따뜻한 오프화이트) */
+  --color-bg: #FAF9F7;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F4F2EE;
+  --color-border: #E7E3DC;
+  --color-border-subtle: #F0EDE8;
+  --color-text: #1A1917;
+  --color-text-muted: #6E6A63;
+  /* faint는 브리프 예시(#9B968D, 대비 2.9:1)가 흰 배경에서 AA(4.5:1)에 못 미쳐
+     WCAG 계산으로 재조정한 값(4.4~4.6:1). 근거: docs 리포트 참조 */
+  --color-text-faint: #7A756B;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, .10);
+
+  /* 주황 시스템 */
+  --color-primary: #FF6B35;              /* fill·큰 악센트(버튼·바·닷·링) 전용 */
+  --color-primary-hover: #FF7D4D;
+  /* -strong: 작은 텍스트/아이콘용. 브리프 예시(#DC5A26)가 흰 배경에서 3.8:1로
+     텍스트 AA(4.5:1)에 못 미쳐 #BC4616으로 깊게 조정(흰 배경 5.2:1, 앱배경 5.0:1) */
+  --color-primary-strong: #BC4616;
+  --color-primary-soft: rgba(255, 107, 53, .12);
+  --color-primary-faint: rgba(255, 107, 53, .06);
+  --on-primary: #FFFFFF;
+
+  /* 에러 전용 시맨틱 색 */
+  --color-danger: #C4392B;
+
+  --sidebar-width: 320px;
+  --motion-fast: 120ms ease;
+  --motion-base: 150ms ease;
+}
+
+[data-theme='dark'] {
+  --color-bg: #15140F;
+  --color-surface: #1E1C17;
+  --color-surface-2: #262319;
+  --color-border: #34302A;
+  --color-border-subtle: #241F1D;
+  --color-text: #ECE8E0;
+  --color-text-muted: #98938A;
+  /* 라이트와 동일 사유로 브리프 예시(#6C675E, 서피스 대비 3.0:1)를 #8B857A로 조정(4.4~5.0:1) */
+  --color-text-faint: #8B857A;
+  /* 다크에서는 그림자 대신 border/서피스 계층으로 깊이를 표현 — 거의 0 */
+  --shadow-sm: none;
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, .28);
+
+  --color-primary-strong: #FF8659;        /* 다크 서피스 대비 7.1:1 이상 */
+  --color-primary-soft: rgba(255, 107, 53, .18);
+  --color-primary-faint: rgba(255, 107, 53, .10);
+
+  /* 에러 전용 시맨틱 색 */
+  --color-danger: #F07567;
+}
+
+/* ============================================================
+   리셋 · 베이스
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; }
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   레이아웃
+   ============================================================ */
+.app { display: flex; height: 100vh; }
+.sidebar {
+  width: var(--sidebar-width); flex-shrink: 0; display: flex; flex-direction: column;
+  border-right: 1px solid var(--color-border); background: var(--color-surface);
+}
+.detail { flex: 1; overflow-y: auto; padding: var(--sp-6) var(--sp-7); }
+
+/* ============================================================
+   버튼 시스템 — btn-primary(주황 fill) / btn-ghost(보조) / icon-btn
+   화면마다 버튼 크기가 제각각이던 문제(오너 피드백)를 없애기 위해 두 버튼 모두 동일한
+   height·padding·font-size·border-radius를 공유한다 — 같은 행에 나란히 서도 높이가
+   정확히 일치해야 한다. 개별 화면(SettingsModal 등)에서 폰트 크기 등을 따로 덮어쓰지 않는다.
+   ============================================================ */
+.btn-primary,
+.btn-ghost {
+  height: 34px; padding: 0 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius); font-size: var(--fs-base); font-weight: 600; line-height: 1;
+  cursor: pointer; white-space: nowrap;
+  transition: background-color var(--motion-base), border-color var(--motion-base),
+    color var(--motion-base), transform var(--motion-fast), box-shadow var(--motion-base);
+}
+.btn-primary { background: var(--color-primary); color: var(--on-primary); border: none; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+.btn-primary:focus-visible {
+  outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft), 0 0 0 1px var(--color-primary);
+}
+/* hero 액션(회의 시작/녹음 시작) — 유일하게 의도적으로 더 큰 예외(풀폭 1차 CTA). 다른 화면과
+   같은 행에 나란히 서지 않으므로 규격 통일 대상이 아니다. */
+.btn-hero { width: 100%; height: 44px; font-size: var(--fs-md); box-shadow: var(--shadow-sm); }
+.btn-hero:hover { box-shadow: var(--shadow-md); }
+
+.btn-ghost {
+  background: transparent; color: var(--color-text); border: 1px solid var(--color-border);
+}
+.btn-ghost:hover { background: var(--color-surface-2); border-color: var(--color-text-faint); }
+.btn-ghost:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ghost:focus-visible {
+  outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.icon-btn {
+  width: 36px; height: 36px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  background: transparent; color: var(--color-text-muted); cursor: pointer;
+  transition: background-color var(--motion-base), color var(--motion-base), border-color var(--motion-base);
+}
+.icon-btn:hover { background: var(--color-surface-2); color: var(--color-primary-strong); border-color: var(--color-primary); }
+.icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); }
+
+/* ============================================================
+   사이드바 — 헤더(워드마크+설정) / 히어로 / 필터 / 목록
+   ============================================================ */
+.sidebar-top {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+}
+.wordmark {
+  font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; color: var(--color-text);
+}
+.sidebar-hero { padding: 0 var(--sp-4) var(--sp-4); }
+
+.filters {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--color-border-subtle);
+}
+.filter-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.filter-label {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.03em;
+}
+.filters select,
+.filters input {
+  width: 100%; height: 32px; padding: 0 var(--sp-2); font-size: var(--fs-sm);
+  background: var(--color-bg); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
+}
+.filters select {
+  appearance: none;
+  padding-right: var(--sp-5);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236E6A63' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--sp-2) center;
+}
+[data-theme='dark'] .filters select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2398938A' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.filters select:focus,
+.filters input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  outline: none;
+}
+.filter-range { display: flex; gap: var(--sp-2); align-items: center; }
+.filter-range input { flex: 1; min-width: 0; }
+.range-sep { color: var(--color-text-muted); }
+.filters input::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
+[data-theme='dark'] .filters input::-webkit-calendar-picker-indicator { filter: invert(1); }
+.filter-clear {
+  align-self: flex-end; font-size: var(--fs-xs); color: var(--color-text-muted);
+  background: none; border: none; cursor: pointer;
+}
+.filter-clear:hover { color: var(--color-primary-strong); text-decoration: underline; }
+
+.meeting-list { overflow-y: auto; flex: 1; }
+.meeting-card {
+  padding: var(--sp-3) var(--sp-4); cursor: pointer;
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-left: 3px solid transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.meeting-card:hover { background: var(--color-surface-2); }
+.meeting-card.selected {
+  background: var(--color-primary-faint);
+  border-left-color: var(--color-primary);
+}
+.meeting-card h3 { font-size: var(--fs-base); font-weight: 500; }
+.meeting-card.selected h3 { font-weight: 600; }
+.meeting-card .date { font-size: var(--fs-xs); color: var(--color-text-faint); margin-top: 2px; }
+.meeting-card .excerpt {
+  font-size: var(--fs-sm); color: var(--color-text-muted); margin-top: var(--sp-1); line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* 진행 카드(v0.4.0 ③b) — 스피너 + 3단계(전사 → 요약 → 저장) 표시. 실패 카드(⚠+재시도)는
+   기존 .meeting-card 스타일을 그대로 쓴다. reduced-motion 대응은 파일 하단 전역 규칙이 담당한다. */
+.pipeline-card { display: flex; align-items: center; gap: var(--sp-3); cursor: default; }
+.pipeline-card:hover { background: none; }
+.pipeline-spinner {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--color-primary-soft); border-top-color: var(--color-primary);
+  animation: pipeline-spin 0.8s linear infinite;
+}
+@keyframes pipeline-spin { to { transform: rotate(360deg); } }
+.pipeline-steps { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.pipeline-step { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); color: var(--color-text-faint); }
+.pipeline-step:not(:last-child)::after { content: '→'; margin-left: var(--sp-2); color: var(--color-border); }
+.pipeline-step-dot {
+  width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--color-border); font-size: 10px; color: var(--color-text-faint);
+}
+.pipeline-step-active { color: var(--color-text); font-weight: 600; }
+.pipeline-step-active .pipeline-step-dot {
+  border-color: var(--color-primary); background: var(--color-primary-faint); color: var(--color-primary-strong);
+}
+.pipeline-step-done .pipeline-step-dot { border-color: var(--color-primary); background: var(--color-primary); color: var(--on-primary); }
+.pipeline-step-done { color: var(--color-text-muted); }
+
+/* 빈상태 — 사이드바(회의록 없음) · 상세(미선택) 공통 패턴(중앙 글리프+제목+힌트) */
+.meeting-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--sp-2); padding: var(--sp-7) var(--sp-5); text-align: center; color: var(--color-text-muted);
+}
+.meeting-empty .empty-glyph {
+  width: 64px; height: 64px; border-radius: 50%; margin-bottom: var(--sp-1);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-primary-faint); color: var(--color-primary-strong);
+}
+.meeting-empty h3 { font-size: var(--fs-base); font-weight: 600; color: var(--color-text); }
+.meeting-empty p { font-size: var(--fs-sm); max-width: 220px; }
+.empty, .muted { color: var(--color-text-muted); }
+
+/* ============================================================
+   녹음 바
+   ============================================================ */
+.recording-bar {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+  padding: var(--sp-3); font-size: var(--fs-sm); color: var(--color-text);
+  background: var(--color-primary-faint); border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.recording-label { color: var(--color-text-muted); }
+.recording-elapsed {
+  font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-weight: 600; color: var(--color-text);
+}
+.recording-stop { margin-left: auto; }
+.rec-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  background: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-faint);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ============================================================
+   모달 — backdrop 블러 + fade/scale-in 모션
+   ============================================================ */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 100;
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  animation: modal-backdrop-in var(--motion-base);
+}
+.modal {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3);
+  width: 360px; max-height: 80vh; overflow-y: auto;
+  animation: modal-in var(--motion-base);
+}
+.modal.modal-wide { width: 420px; }
+.modal input {
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius);
+  background: var(--color-bg); color: var(--color-text); font-size: var(--fs-sm);
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
+}
+.modal input:focus {
+  outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+.modal select {
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius);
+  background: var(--color-bg); color: var(--color-text); font-size: var(--fs-sm);
+}
+.modal select:focus {
+  outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+.modal-header { display: flex; align-items: center; justify-content: space-between; }
+.modal-header h2 { font-size: var(--fs-lg); font-weight: 600; }
+@keyframes modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* GitHub 연결 플로우(Device Flow 안내 + 레포 선택) — 온보딩 팝업·설정 GitHub 섹션 공용 */
+.github-connect-step { display: flex; flex-direction: column; gap: var(--sp-3); }
+.github-user-code {
+  align-self: flex-start; font-family: ui-monospace, monospace; font-size: var(--fs-xl); font-weight: 700;
+  letter-spacing: 0.08em; padding: var(--sp-2) var(--sp-4); border-radius: var(--radius);
+  background: var(--color-primary-faint); border: 1px solid var(--color-primary-soft); color: var(--color-text);
+}
+.github-waiting { display: flex; align-items: center; gap: var(--sp-2); }
+
+/* 팀 칩(StartMeetingModal) */
+.chip-group { display: flex; flex-direction: column; gap: var(--sp-2); }
+.chip-group-label {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.03em;
+}
+.chip-group-body { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.chip {
+  border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm); cursor: pointer; background: var(--color-bg); color: var(--color-text);
+  transition: background-color var(--motion-base), border-color var(--motion-base), color var(--motion-base);
+}
+.chip:hover { border-color: var(--color-text-faint); }
+.chip.selected {
+  background: var(--color-primary-soft); border-color: var(--color-primary);
+  color: var(--color-primary-strong); font-weight: 600;
+}
+.chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); }
+
+/* 참석자 태그 입력(StartMeetingModal 게스트/폴백 공용) — 로스터 선택 칩과 같은 pill 체계이되
+   색조만 달리해 "직접 입력한 이름"임을 구분한다. */
+.tag-input { display: flex; flex-direction: column; gap: var(--sp-1); }
+.tag-input-chips {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius);
+  background: var(--color-bg); transition: border-color var(--motion-base), box-shadow var(--motion-base);
+}
+.tag-input-chips:focus-within {
+  border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+.tag-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1); cursor: default;
+  background: var(--color-primary-faint); border-color: var(--color-primary-soft); color: var(--color-primary-strong);
+}
+.tag-chip-remove {
+  border: none; background: none; padding: 0; margin: 0; line-height: 1;
+  font-size: var(--fs-sm); color: inherit; opacity: .6; cursor: pointer;
+}
+.tag-chip-remove:hover { opacity: 1; }
+.modal input.tag-input-field {
+  flex: 1 1 120px; min-width: 120px; border: none; padding: 0; background: none;
+  font-size: var(--fs-sm); color: var(--color-text);
+}
+.modal input.tag-input-field:focus { outline: none; box-shadow: none; }
+
+/* ============================================================
+   설정 모달
+   ============================================================ */
+.settings-modal { width: 480px; }
+.settings-header { display: flex; align-items: center; justify-content: space-between; }
+.settings-header h2 { font-size: var(--fs-lg); font-weight: 600; }
+.setting-row {
+  display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.setting-row:last-of-type { border-bottom: none; }
+/* 설정 화면 글자 크기 상향(v0.3.1 Fix 2) — 실사용 피드백(너무 작아 읽기 어려움) 대응.
+   라벨 > 본문/입력 위계는 유지한 채 토큰 체계(--fs-*) 내에서 전반적으로 한 단계 올린다.
+   input/select는 다른 모달(GithubPromptModal 등)과 공유하는 전역 클래스라 .settings-modal
+   스코프로만 덮어써 다른 화면에 영향이 가지 않게 한다. 버튼(.btn-ghost/.btn-primary)은 전역
+   규격(theme.css 버튼 시스템)을 그대로 따르며 여기서 개별로 덮어쓰지 않는다(오너 피드백 —
+   화면마다 버튼 크기가 달라지는 문제 재발 방지). */
+.setting-label { font-weight: 600; }
+.setting-desc { color: var(--color-text-muted); line-height: 1.5; }
+.setting-divider { border-top: 1px solid var(--color-border-subtle); margin: var(--sp-1) 0; }
+.setting-path-row { display: flex; align-items: center; gap: var(--sp-2); }
+.setting-path {
+  flex: 1; min-width: 0; font-family: ui-monospace, monospace;
+  padding: var(--sp-1) var(--sp-2); background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  direction: rtl; text-align: left; /* 길면 좌측을 생략(경로 끝부분이 더 유의미) */
+}
+.settings-modal input,
+.settings-modal select { font-size: var(--fs-base); }
+.settings-modal .setting-label { font-size: var(--fs-md); }
+.settings-modal .setting-desc { font-size: var(--fs-base); }
+.settings-modal .setting-path { font-size: var(--fs-base); }
+.settings-modal .segmented-item { font-size: var(--fs-base); }
+.segmented {
+  display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius);
+  overflow: hidden; width: fit-content;
+}
+.segmented-item {
+  padding: var(--sp-2) var(--sp-4); border: none;
+  background: var(--color-bg); color: var(--color-text-muted); cursor: pointer;
+  transition: background-color var(--motion-base), color var(--motion-base);
+}
+.segmented-item + .segmented-item { border-left: 1px solid var(--color-border); }
+.segmented-item.active { background: var(--color-primary-soft); color: var(--color-primary-strong); font-weight: 600; }
+.segmented-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary); }
+.switch {
+  width: 40px; height: 22px; border-radius: var(--radius-pill); border: 1px solid var(--color-border);
+  background: var(--color-bg); position: relative; cursor: pointer; padding: 0;
+  transition: background-color var(--motion-base), border-color var(--motion-base);
+}
+.switch.on { background: var(--color-primary); border-color: var(--color-primary); }
+.switch-knob {
+  position: absolute; top: 1px; left: 1px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transition: transform var(--motion-base);
+}
+.switch.on .switch-knob { transform: translateX(18px); }
+.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); }
+
+/* ============================================================
+   회의 상세
+   ============================================================ */
+.detail-header { margin-bottom: var(--sp-6); padding-bottom: var(--sp-4); border-bottom: 1px solid var(--color-border-subtle); }
+.detail-header h1 { font-size: var(--fs-xl); font-weight: 600; line-height: 1.3; }
+.date { font-size: var(--fs-sm); color: var(--color-text-muted); margin-top: var(--sp-2); }
+.participant-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-2); }
+.participant-chip {
+  font-size: var(--fs-xs); padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--color-surface-2); color: var(--color-text-muted); border: 1px solid var(--color-border-subtle);
+}
+
+article section { margin-bottom: var(--sp-6); }
+article h2 {
+  font-size: var(--fs-sm); font-weight: 600; color: var(--color-primary-strong);
+  letter-spacing: 0.03em; margin-bottom: var(--sp-3);
+  display: flex; align-items: center; gap: var(--sp-2);
+}
+article h2::before {
+  content: ''; display: inline-block; width: 3px; height: 12px;
+  background: var(--color-primary); border-radius: 2px;
+}
+article section > p { max-width: 66ch; line-height: 1.75; font-size: var(--fs-base); }
+
+article ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+article li {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-2);
+  font-size: var(--fs-base); line-height: 1.6;
+}
+article li::before {
+  content: ''; width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0;
+  border-radius: var(--radius-sm); border: 1.5px solid var(--color-primary-strong);
+  background-color: var(--color-primary-faint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5' stroke='%23BC4616' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 10px 10px;
+}
+[data-theme='dark'] article li::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5' stroke='%23FF8659' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.transcript p { margin-bottom: var(--sp-3); line-height: 1.7; max-width: 66ch; }
+.transcript p:last-child { margin-bottom: 0; }
+.transcript .ts {
+  display: inline-block; min-width: 44px; margin-right: var(--sp-2);
+  padding: 1px var(--sp-2); border-radius: var(--radius-sm);
+  background: var(--color-primary-faint); color: var(--color-primary-strong);
+  font-family: ui-monospace, monospace; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+}
+.badge {
+  font-size: var(--fs-xs); font-weight: 600; background: var(--color-primary-soft); color: var(--color-primary-strong);
+  border-radius: var(--radius-sm); padding: 2px var(--sp-2); margin-left: var(--sp-2); white-space: nowrap;
+}
+
+/* ============================================================
+   온보딩 — 우측 하단 고정 설치 패널(SetupPanel, v0.3.0 비차단화)
+   ============================================================ */
+.setup-panel {
+  position: fixed; right: var(--sp-5); bottom: var(--sp-5); z-index: 40;
+  width: 320px; max-width: calc(100vw - var(--sp-5) * 2);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: modal-in var(--motion-base);
+}
+.setup-panel-header {
+  display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4);
+}
+.setup-panel-title { flex: 1; font-size: var(--fs-sm); font-weight: 600; }
+.setup-panel-body {
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-4); text-align: left;
+}
+.setup-panel-body ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.setup-panel-body li {
+  font-size: var(--fs-sm); color: var(--color-text-muted); line-height: 1.6;
+  background: var(--color-surface-2); border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius); padding: var(--sp-3);
+}
+.setup-panel-body li b { color: var(--color-text); }
+.env-desc { color: var(--color-text-muted); font-size: var(--fs-sm); text-align: left; line-height: 1.7; }
+.env-error { color: var(--color-danger); font-size: var(--fs-sm); }
+.env-progress-label { font-size: var(--fs-sm); color: var(--color-text-muted); }
+.setting-error { color: var(--color-danger); font-size: var(--fs-xs); }
+
+.progress-bar {
+  width: 100%; height: 6px; border-radius: var(--radius-pill);
+  background: var(--color-surface-2); border: 1px solid var(--color-border); overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--color-primary); border-radius: var(--radius-pill);
+  transition: width .2s ease;
+}
+
+/* ============================================================
+   자동 업데이트 — 우측 상단 고정 배너(UpdateBanner, v0.4.0 ③b)
+   setup-panel과 같은 카드 톤(테두리·라운드·그림자)을 공유하되, 우측 하단은 setup-panel이
+   이미 쓰고 있어 겹치지 않도록 우측 상단에 둔다.
+   ============================================================ */
+.update-banner {
+  position: fixed; top: var(--sp-5); right: var(--sp-5); z-index: 45;
+  width: 320px; max-width: calc(100vw - var(--sp-5) * 2);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md); animation: modal-in var(--motion-base);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+.update-banner-title { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); }
+
+/* ============================================================
+   모션 절제 — reduced-motion 사용자 존중
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
