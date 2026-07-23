@@ -490,20 +490,25 @@ article li::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5' stroke='%23FF8659' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
+/* flex로 타임스탬프 칩을 고정폭 첫 항목으로 두고 본문이 별도 열에서 접히게 해,
+   매직 넘버 없이 행잉 인덴트 효과를 낸다. word-break keep-all은 한국어 어절 단위 줄바꿈. */
 .transcript p {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
   word-break: keep-all;
   overflow-wrap: anywhere;
-  padding-left: 5.5em;
-  text-indent: -5.5em;
-  margin: 0 0 var(--sp-2);
   line-height: 1.7;
   max-width: 66ch;
+  margin-bottom: var(--sp-3);
 }
 .transcript p:last-child { margin-bottom: 0; }
 .transcript .ts {
-  font-family: ui-monospace, monospace;
-  color: var(--color-text-muted);
-  margin-right: var(--sp-1);
+  flex: none;
+  display: inline-block; min-width: 44px;
+  padding: 1px var(--sp-2); border-radius: var(--radius-sm);
+  background: var(--color-primary-faint); color: var(--color-primary-strong);
+  font-family: ui-monospace, monospace; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
 }
 .badge {
   font-size: var(--fs-xs); font-weight: 600; background: var(--color-primary-soft); color: var(--color-primary-strong);
