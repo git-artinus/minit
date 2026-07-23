@@ -35,8 +35,14 @@ export function localIsoNow(now: Date = new Date()): string {
 }
 
 export function defaultMeetingTitle(now: Date): string {
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `회의 ${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`
+  return `${now.getMonth() + 1}월 ${now.getDate()}일 회의록`
+}
+
+// 회의록 frontmatter date(ISO8601 +09:00)에서 시작 시각 HH:mm만 뽑는다. 저장된 오프셋 표기를
+// 그대로 읽어(문자열 파싱) 뷰어 타임존에 영향받지 않는다.
+export function formatStartTime(iso: string): string {
+  const m = /T(\d{2}):(\d{2})/.exec(iso)
+  return m ? `${m[1]}:${m[2]}` : ''
 }
 
 export function formatTimestamp(ms: number): string {

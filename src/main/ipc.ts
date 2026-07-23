@@ -16,7 +16,10 @@ import { transcribe } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
 import { isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
 import { regenerateSummary } from './pipeline/regenerate'
-import { addParticipants, loadRoster, seedRosterIfMissing } from './roster'
+import {
+  addParticipants, dedupeAndSort, loadRoster, mergeNames, parseImportInput,
+  removeParticipant, renameParticipant, saveRoster, seedRosterIfMissing,
+} from './roster'
 import { collectParticipants } from '../shared/meeting-query'
 import { listChannels, notifySlackForMeeting } from './slack'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
@@ -36,6 +39,7 @@ import type {
   GithubLoginState,
   Meeting,
   MeetingMeta,
+  Roster,
   SlackChannel,
   SlackTokenState,
   UpdateCheckResult
@@ -330,6 +334,62 @@ export function registerIpc(win: BrowserWindow, opts: { onRecordingState: (r: bo
     }
     const current = loadRoster(configDir, fs.existsSync, (p) => fs.readFileSync(p, 'utf-8'))
     return addParticipants(current, names, (p, content) => fs.writeFileSync(p, content), configDir)
+  })
+
+  const readRoster = (): Roster =>
+    loadRoster(configDir, fs.existsSync, (p) => fs.readFileSync(p, 'utf-8')) ?? { participants: [] }
+  const writeRoster = (r: Roster): void =>
+    saveRoster(configDir, r, (p, content) => fs.writeFileSync(p, content))
+
+  ipcMain.handle('roster:rename', (_e, arg: unknown) => {
+    if (typeof arg !== 'object' || arg === null) throw new Error('invalid')
+    const { from, to } = arg as { from?: unknown; to?: unknown }
+    if (typeof from !== 'string' || typeof to !== 'string') throw new Error('invalid')
+    const next = renameParticipant(readRoster(), from, to)
+    writeRoster(next)
+    return next
+  })
+
+  ipcMain.handle('roster:remove', (_e, name: unknown) => {
+    if (typeof name !== 'string') throw new Error('invalid')
+    const next = removeParticipant(readRoster(), name)
+    writeRoster(next)
+    return next
+  })
+
+  ipcMain.handle('roster:merge', (_e, names: unknown) => {
+    if (!Array.isArray(names) || !names.every((n) => typeof n === 'string')) throw new Error('invalid')
+    const result = mergeNames(readRoster(), names)
+    if (result.addedCount > 0) writeRoster(result.roster)
+    return result
+  })
+
+  ipcMain.handle('roster:replace', (_e, names: unknown) => {
+    if (!Array.isArray(names) || !names.every((n) => typeof n === 'string')) throw new Error('invalid')
+    const next: Roster = { participants: dedupeAndSort(names) }
+    writeRoster(next)
+    return next
+  })
+
+  ipcMain.handle('roster:exportFile', async () => {
+    const current = readRoster()
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: 'participants.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    })
+    if (canceled || !filePath) return { saved: false }
+    fs.writeFileSync(filePath, JSON.stringify(current, null, 2))
+    return { saved: true }
+  })
+
+  ipcMain.handle('roster:importFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    })
+    if (canceled || filePaths.length === 0) return { names: null }
+    const raw = fs.readFileSync(filePaths[0], 'utf-8')
+    return { names: parseImportInput(raw) }
   })
 
   ipcMain.handle('summary:regenerate', async (_e, filename: string) => {

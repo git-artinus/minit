@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
-  defaultMeetingTitle, formatTimestamp, isValidMeetingFilename, localIsoNow, meetingFilename, parseMeeting,
+  defaultMeetingTitle, formatStartTime, formatTimestamp, isValidMeetingFilename, localIsoNow, meetingFilename, parseMeeting,
   serializeMeeting,
 } from '../../src/shared/meeting-file'
 
@@ -52,11 +52,20 @@ describe('localIsoNow', () => {
 })
 
 describe('defaultMeetingTitle', () => {
-  test('고정 Date로 "회의 YYYY-MM-DD HH:MM" 형식 제목을 만든다', () => {
-    expect(defaultMeetingTitle(new Date(2026, 6, 20, 9, 5, 0))).toBe('회의 2026-07-20 09:05')
+  test('M월 D일 회의록 형식을 만든다', () => {
+    expect(defaultMeetingTitle(new Date(2026, 6, 20, 9, 5, 0))).toBe('7월 20일 회의록')
   })
-  test('시·분이 두 자리로 0 패딩된다', () => {
-    expect(defaultMeetingTitle(new Date(2026, 0, 3, 0, 7, 0))).toBe('회의 2026-01-03 00:07')
+  test('월과 일이 패딩되지 않는다 (자연수 표기)', () => {
+    expect(defaultMeetingTitle(new Date(2026, 0, 3, 0, 7, 0))).toBe('1월 3일 회의록')
+  })
+})
+
+describe('formatStartTime', () => {
+  test('ISO8601에서 HH:mm을 추출한다', () => {
+    expect(formatStartTime('2026-07-23T14:05:00+09:00')).toBe('14:05')
+  })
+  test('형식이 어긋나면 빈 문자열을 반환한다', () => {
+    expect(formatStartTime('bad')).toBe('')
   })
 })
 

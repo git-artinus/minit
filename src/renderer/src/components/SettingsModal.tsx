@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
 import { GithubConnectFlow } from './GithubConnectFlow'
+import { RosterSection } from './RosterSection'
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -356,7 +357,7 @@ export function SettingsModal(props: {
           </div>
         </div>
 
-        <div className="setting-divider" />
+        <RosterSection />
 
         <div className="setting-row">
           <div className="setting-label">연동 (Slack)</div>
@@ -466,8 +467,6 @@ export function SettingsModal(props: {
           {slackError && <p className="setting-error">{slackError}</p>}
         </div>
 
-        <div className="setting-divider" />
-
         <div className="setting-row">
           <div className="setting-label">GitHub 계정</div>
           <div className="setting-desc">
@@ -527,8 +526,6 @@ export function SettingsModal(props: {
             <span className="switch-knob" />
           </button>
         </div>
-
-        <div className="setting-divider" />
 
         <div className="setting-row">
           <div className="setting-label">버전</div>

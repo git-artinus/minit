@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { parseRoster } from '../shared/roster'
+import { dedupeAndSort, mergeNames, parseRoster } from '../shared/roster'
 import type { Roster } from '../shared/types'
 
 // 개인 로스터(v0.4.0 ③a) — 레포 공용 participants.json(회사 명단)을 폐기하고 사용자 홈
@@ -45,17 +45,7 @@ export function seedRosterIfMissing(
   if (deps.fileExists(file)) {
     return loadRoster(configDir, deps.fileExists, deps.readFile) ?? { participants: [] }
   }
-  // 수집된 참석자 중 대소문자 변형이 있으면 1개만 유지(첫 표기 승리)
-  const participants: string[] = []
-  const seen = new Set<string>()
-  for (const name of deps.collectExistingParticipants()) {
-    const lower = name.toLowerCase()
-    if (!seen.has(lower)) {
-      seen.add(lower)
-      participants.push(name)
-    }
-  }
-  const sorted = participants.sort((a, b) => a.localeCompare(b, 'ko'))
+  const sorted = dedupeAndSort(deps.collectExistingParticipants())
   const roster: Roster = { participants: sorted }
   saveRoster(configDir, roster, deps.writeFile)
   return roster
@@ -69,23 +59,10 @@ export function addParticipants(
   writeFile: (p: string, content: string) => void,
   configDir: string
 ): Roster {
-  const existing = new Set((current?.participants ?? []).map((n) => n.toLowerCase()))
-
-  // 배치 내 대소문자 변형 dedup: Map으로 lowercase -> 원본 표기 매핑(첫 표기 승리)
-  const batchMap = new Map<string, string>()
-  for (const n of names.map((n) => n.trim()).filter((n) => n !== '')) {
-    const lower = n.toLowerCase()
-    if (!batchMap.has(lower)) {
-      batchMap.set(lower, n)
-    }
-  }
-
-  // 기존 로스터에 없는 것만 필터링
-  const additions = [...batchMap.values()].filter((n) => !existing.has(n.toLowerCase()))
-
-  if (additions.length === 0) return current ?? { participants: [] }
-  const merged = [...(current?.participants ?? []), ...additions].sort((a, b) => a.localeCompare(b, 'ko'))
-  const roster: Roster = { participants: merged }
+  const { roster, addedCount } = mergeNames(current ?? { participants: [] }, names)
+  if (addedCount === 0) return current ?? { participants: [] }
   saveRoster(configDir, roster, writeFile)
   return roster
 }
+
+export { dedupeAndSort, mergeNames, parseImportInput, removeParticipant, renameParticipant } from '../shared/roster'
