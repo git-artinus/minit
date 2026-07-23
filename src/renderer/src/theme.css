@@ -383,7 +383,7 @@ body {
 .settings-modal { width: 480px; }
 .settings-header { display: flex; align-items: center; justify-content: space-between; }
 .settings-header h2 { font-size: var(--fs-lg); font-weight: 600; }
-.setting-row {
+.setting-row, .setting-block {
   display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0;
   border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -437,12 +437,7 @@ body {
 .switch.on .switch-knob { transform: translateX(18px); }
 .switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); }
 
-/* 참석자 관리(RosterSection) — setting-row와 동일한 구획 톤(패딩·구분선)을 공유해
-   다른 설정 섹션들 사이에 자연스러운 형제 섹션으로 보이도록 한다. */
-.setting-block {
-  display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
+/* 참석자 관리(RosterSection) — setting-row와 동일한 구획 톤(패딩·구분선)을 공유한다(위 .setting-row 규칙 참고). */
 .roster-add { display: flex; gap: var(--sp-2); margin: var(--sp-2) 0; }
 .roster-add-field { flex: 1; }
 .roster-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }

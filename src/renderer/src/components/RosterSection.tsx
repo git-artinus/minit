@@ -6,6 +6,7 @@ export function RosterSection(): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     window.minuting.getRoster().then((r) => setRoster((r as Roster | null) ?? { participants: [] })).catch(() => {})
@@ -14,26 +15,42 @@ export function RosterSection(): React.JSX.Element {
   const addNames = async (): Promise<void> => {
     const names = draft.split(/[\n,]/).map((n) => n.trim()).filter((n) => n !== '')
     if (names.length === 0) return
-    const result = await window.minuting.mergeRoster(names)
-    setRoster(result.roster)
-    setDraft('')
+    try {
+      const result = await window.minuting.mergeRoster(names)
+      setRoster(result.roster)
+      setDraft('')
+      setError(null)
+    } catch {
+      setError('참석자를 추가하지 못했습니다.')
+    }
   }
 
   const startEdit = (name: string): void => { setEditing(name); setEditValue(name) }
   const commitEdit = async (): Promise<void> => {
     if (editing === null) return
-    const next = await window.minuting.renameRosterParticipant(editing, editValue)
-    setRoster(next)
-    setEditing(null)
+    try {
+      const next = await window.minuting.renameRosterParticipant(editing, editValue)
+      setRoster(next)
+      setEditing(null)
+      setError(null)
+    } catch {
+      setError('이름을 변경하지 못했습니다.')
+    }
   }
   const remove = async (name: string): Promise<void> => {
-    setRoster(await window.minuting.removeRosterParticipant(name))
+    try {
+      setRoster(await window.minuting.removeRosterParticipant(name))
+      setError(null)
+    } catch {
+      setError('삭제하지 못했습니다.')
+    }
   }
 
   return (
     <div className="setting-block">
       <div className="setting-label">참석자</div>
       <p className="env-desc">회의 시작 없이도 참석자를 미리 등록·수정·삭제할 수 있습니다.</p>
+      {error && <p className="setting-error">{error}</p>}
 
       <div className="roster-add">
         <input
