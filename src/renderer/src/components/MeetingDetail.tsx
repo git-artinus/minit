@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { formatTimestamp } from '../../../shared/meeting-file'
+import { mergeParagraphs } from '../../../shared/transcript'
 import { useMeetings } from '../state/meetings'
 
 // 사용량 한도 초과일 가능성이 있는 에러 메시지 패턴(Claude CLI가 남기는 문자열 기준) — 실버그
@@ -11,6 +12,8 @@ export function MeetingDetail() {
   const meeting = meetings.find((m) => m.filename === selected)
   const [regenerating, setRegenerating] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
+  // 기존(v0.5.0 이전) 회의록은 endMs가 없어 start→start 근사 gap으로 병합된다. 원본 파일은 수정하지 않는다.
+  const paragraphs = useMemo(() => mergeParagraphs(meeting?.segments ?? []), [meeting?.segments])
   if (!meeting) {
     return (
       <div className="meeting-empty empty">
@@ -101,7 +104,7 @@ export function MeetingDetail() {
       <section>
         <h2>트랜스크립트</h2>
         <div className="transcript">
-          {meeting.segments.map((s, i) => (
+          {paragraphs.map((s, i) => (
             <p key={i}><span className="ts">{formatTimestamp(s.startMs)}</span> {s.text}</p>
           ))}
         </div>
