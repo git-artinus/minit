@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { dedupeAndSort, mergeNames, parseRoster, resolveMemberName } from '../../src/shared/roster'
+import { dedupeAndSort, mergeNames, parseRoster, removeParticipant, renameParticipant, resolveMemberName } from '../../src/shared/roster'
 import type { Roster } from '../../src/shared/types'
 
 describe('parseRoster', () => {
@@ -83,5 +83,31 @@ describe('mergeNames', () => {
     expect(r.roster.participants).toEqual(['Bob'])
     expect(r.addedCount).toBe(1)
     expect(r.skippedCount).toBe(0)
+  })
+})
+
+describe('renameParticipant', () => {
+  test('대상 이름 표기를 변경하고 정렬을 유지한다', () => {
+    expect(renameParticipant({ participants: ['Alice', 'Bob'] }, 'bob', 'Carol'))
+      .toEqual({ participants: ['Alice', 'Carol'] })
+  })
+  test('없는 이름이면 원본을 그대로 반환한다', () => {
+    expect(renameParticipant({ participants: ['Alice'] }, 'Zoe', 'Xavier'))
+      .toEqual({ participants: ['Alice'] })
+  })
+  test('빈 문자열로는 변경하지 않는다', () => {
+    expect(renameParticipant({ participants: ['Alice'] }, 'Alice', '  '))
+      .toEqual({ participants: ['Alice'] })
+  })
+  test('다른 기존 항목과 충돌하면 병합(중복 제거)된다', () => {
+    expect(renameParticipant({ participants: ['Alice', 'Bob'] }, 'Bob', 'alice'))
+      .toEqual({ participants: ['Alice'] })
+  })
+})
+
+describe('removeParticipant', () => {
+  test('대소문자 무시로 항목을 제거한다', () => {
+    expect(removeParticipant({ participants: ['Alice', 'Bob'] }, 'BOB'))
+      .toEqual({ participants: ['Alice'] })
   })
 })

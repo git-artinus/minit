@@ -56,3 +56,21 @@ export function resolveMemberName(roster: Roster | null, input: string): string 
   const found = roster.participants.find((p) => p.toLowerCase() === trimmed.toLowerCase())
   return found ?? trimmed
 }
+
+// from(대소문자 무시)을 to 표기로 변경. to가 빈값이거나 from이 없으면 원본 유지. to가 다른 항목과
+// 충돌하면 dedupeAndSort가 병합(첫 표기 승리)한다.
+export function renameParticipant(roster: Roster, from: string, to: string): Roster {
+  const toTrim = to.trim()
+  if (toTrim === '') return roster
+  const fromLower = from.trim().toLowerCase()
+  const idx = roster.participants.findIndex((n) => n.toLowerCase() === fromLower)
+  if (idx === -1) return roster
+  const next = [...roster.participants]
+  next[idx] = toTrim
+  return { participants: dedupeAndSort(next) }
+}
+
+export function removeParticipant(roster: Roster, name: string): Roster {
+  const lower = name.trim().toLowerCase()
+  return { participants: roster.participants.filter((n) => n.toLowerCase() !== lower) }
+}
