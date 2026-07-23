@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { formatTimestamp } from '../../../shared/meeting-file'
+import { formatStartTime, formatTimestamp } from '../../../shared/meeting-file'
 import { mergeParagraphs } from '../../../shared/transcript'
 import { useMeetings } from '../state/meetings'
 
@@ -53,7 +53,7 @@ export function MeetingDetail() {
       <header className="detail-header">
         <h1>{meeting.title}</h1>
         <p className="date">
-          {meeting.date.slice(0, 10)} · {meeting.durationMin}분
+          {meeting.date.slice(0, 10)} {formatStartTime(meeting.date)} · {meeting.durationMin}분
         </p>
         {meeting.recorder && <p className="date">기록: {meeting.recorder}</p>}
         {meeting.participants.length > 0 && (

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collectParticipants, queryMeetings, type MeetingFilter, type SortKey } from '../../../shared/meeting-query'
+import { formatStartTime } from '../../../shared/meeting-file'
 import type { PipelineStage, PipelineStatus, Roster } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
@@ -164,7 +165,7 @@ export function Sidebar({
           >
             <h3>{m.title}</h3>
             <div className="date">
-              {m.date.slice(0, 10)} · {m.durationMin}분
+              {m.date.slice(0, 10)} {formatStartTime(m.date)} · {m.durationMin}분
               {m.participants.length > 0 && <> · {m.participants.length}명</>}
             </div>
             <div className="excerpt">{m.summary || m.segments[0]?.text || ''}</div>
