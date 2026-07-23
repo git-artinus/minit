@@ -60,9 +60,21 @@ export function RosterSection(): React.JSX.Element {
     }
   })()
 
-  const exportFile = async (): Promise<void> => { await window.minuting.exportRosterFile() }
+  const exportFile = async (): Promise<void> => {
+    try {
+      const { saved } = await window.minuting.exportRosterFile()
+      if (saved) setError(null)
+    } catch {
+      setError('내보내기에 실패했습니다.')
+    }
+  }
   const copyClipboard = async (): Promise<void> => {
-    await navigator.clipboard.writeText(JSON.stringify(roster, null, 2))
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(roster, null, 2))
+      setError(null)
+    } catch {
+      setError('클립보드 복사에 실패했습니다.')
+    }
   }
   const importFromFile = async (): Promise<void> => {
     try {
@@ -157,10 +169,10 @@ export function RosterSection(): React.JSX.Element {
           placeholder="이름을 붙여넣으세요 (줄바꿈/쉼표 구분, 또는 participants.json 내용)"
           onChange={(e) => setImportText(e.target.value)}
         />
-        {importText.trim() !== '' && preview === null && (
+        {importText.trim() !== '' && (preview === null || preview.names.length === 0) && (
           <p className="setting-error">형식을 인식할 수 없습니다. 이름 목록 또는 올바른 JSON을 붙여넣으세요.</p>
         )}
-        {preview && (
+        {preview && preview.names.length > 0 && (
           <div className="roster-import-actions">
             <p className="env-desc">신규 {preview.added}명 · 중복 {preview.skipped}명 건너뜀 (총 {preview.names.length}명 입력)</p>
             <button type="button" className="btn-primary" onClick={() => void applyMerge()}>병합</button>
