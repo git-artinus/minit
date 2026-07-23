@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center">회의 녹음을 온디바이스로 전사하고, 요약해 git에 커밋하는 macOS 앱</p>
+<p align="center">로컬에서 동작하는 온디바이스 회의록 앱 - 녹음을 자동으로 전사하고 요약합니다</p>
 
 <p align="center">
   <img alt="release" src="https://img.shields.io/badge/release-v0.4.4-FF6B35">
