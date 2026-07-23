@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Roster } from '../../../shared/types'
+import { mergeNames, parseImportInput } from '../../../shared/roster'
 
 export function RosterSection(): React.JSX.Element {
   const [roster, setRoster] = useState<Roster>({ participants: [] })
@@ -7,6 +8,7 @@ export function RosterSection(): React.JSX.Element {
   const [editing, setEditing] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [importText, setImportText] = useState('')
 
   useEffect(() => {
     window.minuting.getRoster().then((r) => setRoster((r as Roster | null) ?? { participants: [] })).catch(() => {})
@@ -43,6 +45,53 @@ export function RosterSection(): React.JSX.Element {
       setError(null)
     } catch {
       setError('삭제하지 못했습니다.')
+    }
+  }
+
+  // 붙여넣기/파일 내용을 파싱해 신규·중복 수를 미리 계산한다 — 저장 없이 shared 순수 함수로 dry-run.
+  const preview = ((): { names: string[]; added: number; skipped: number } | null => {
+    if (importText.trim() === '') return null
+    try {
+      const names = parseImportInput(importText)
+      const { addedCount, skippedCount } = mergeNames(roster, names)
+      return { names, added: addedCount, skipped: skippedCount }
+    } catch {
+      return null
+    }
+  })()
+
+  const exportFile = async (): Promise<void> => { await window.minuting.exportRosterFile() }
+  const copyClipboard = async (): Promise<void> => {
+    await navigator.clipboard.writeText(JSON.stringify(roster, null, 2))
+  }
+  const importFromFile = async (): Promise<void> => {
+    try {
+      const { names } = await window.minuting.importRosterFile()
+      if (names) setImportText(names.join('\n'))
+      setError(null)
+    } catch {
+      setError('파일을 불러오지 못했습니다. 이름 목록 또는 올바른 JSON 파일인지 확인하세요.')
+    }
+  }
+  const applyMerge = async (): Promise<void> => {
+    if (!preview) return
+    try {
+      setRoster((await window.minuting.mergeRoster(preview.names)).roster)
+      setImportText('')
+      setError(null)
+    } catch {
+      setError('참석자를 병합하지 못했습니다.')
+    }
+  }
+  const applyReplace = async (): Promise<void> => {
+    if (!preview) return
+    if (!window.confirm(`현재 목록을 지우고 ${preview.names.length}명으로 교체합니다. 계속할까요?`)) return
+    try {
+      setRoster(await window.minuting.replaceRoster(preview.names))
+      setImportText('')
+      setError(null)
+    } catch {
+      setError('참석자 목록을 교체하지 못했습니다.')
     }
   }
 
@@ -95,6 +144,30 @@ export function RosterSection(): React.JSX.Element {
           ))}
         </ul>
       )}
+
+      <div className="roster-io">
+        <div className="roster-io-row">
+          <button type="button" className="btn-ghost" onClick={() => void exportFile()}>파일로 내보내기</button>
+          <button type="button" className="btn-ghost" onClick={() => void copyClipboard()}>클립보드 복사</button>
+          <button type="button" className="btn-ghost" onClick={() => void importFromFile()}>파일 불러오기</button>
+        </div>
+        <textarea
+          className="roster-import-text"
+          value={importText}
+          placeholder="이름을 붙여넣으세요 (줄바꿈/쉼표 구분, 또는 participants.json 내용)"
+          onChange={(e) => setImportText(e.target.value)}
+        />
+        {importText.trim() !== '' && preview === null && (
+          <p className="setting-error">형식을 인식할 수 없습니다. 이름 목록 또는 올바른 JSON을 붙여넣으세요.</p>
+        )}
+        {preview && (
+          <div className="roster-import-actions">
+            <p className="env-desc">신규 {preview.added}명 · 중복 {preview.skipped}명 건너뜀 (총 {preview.names.length}명 입력)</p>
+            <button type="button" className="btn-primary" onClick={() => void applyMerge()}>병합</button>
+            <button type="button" className="btn-ghost" onClick={() => void applyReplace()}>전체 교체</button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
