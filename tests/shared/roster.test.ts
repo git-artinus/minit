@@ -103,6 +103,10 @@ describe('renameParticipant', () => {
     expect(renameParticipant({ participants: ['Alice', 'Bob'] }, 'Bob', 'alice'))
       .toEqual({ participants: ['Alice'] })
   })
+  test('이름 변경이 기존 항목과 충돌하면 기존 표기가 유지된다(위치 무관)', () => {
+    expect(renameParticipant({ participants: ['Bob', 'Zoe'] }, 'Bob', 'ZOE'))
+      .toEqual({ participants: ['Zoe'] })
+  })
 })
 
 describe('removeParticipant', () => {

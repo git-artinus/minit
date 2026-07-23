@@ -57,16 +57,17 @@ export function resolveMemberName(roster: Roster | null, input: string): string 
   return found ?? trimmed
 }
 
-// from(대소문자 무시)을 to 표기로 변경. to가 빈값이거나 from이 없으면 원본 유지. to가 다른 항목과
-// 충돌하면 dedupeAndSort가 병합(첫 표기 승리)한다.
+// from(대소문자 무시)을 to 표기로 변경. to가 빈값이거나 from이 없으면 원본 유지. to가 다른 기존
+// 항목과 충돌하면, from을 제거하고 to를 뒤에 붙인 뒤 dedupeAndSort로 병합해 기존 항목 표기가
+// 이기게 한다(mergeNames와 동일한 "기존 항목 승리" 규칙 — 위치 의존성 제거).
 export function renameParticipant(roster: Roster, from: string, to: string): Roster {
   const toTrim = to.trim()
   if (toTrim === '') return roster
   const fromLower = from.trim().toLowerCase()
   const idx = roster.participants.findIndex((n) => n.toLowerCase() === fromLower)
   if (idx === -1) return roster
-  const next = [...roster.participants]
-  next[idx] = toTrim
+  const next = roster.participants.filter((n) => n.toLowerCase() !== fromLower)
+  next.push(toTrim)
   return { participants: dedupeAndSort(next) }
 }
 
