@@ -16,16 +16,20 @@ export function SlackChannelSelect(props: {
   return (
     <select value={props.value} onFocus={props.onFocus} onChange={(e) => props.onChange(e.target.value)}>
       {props.leading}
-      <optgroup label="공개">
-        {publicChannels.map((c) => (
-          <option key={c.id} value={c.id}># {c.name}</option>
-        ))}
-      </optgroup>
-      <optgroup label="비공개">
-        {privateChannels.map((c) => (
-          <option key={c.id} value={c.id}>🔒 {c.name}</option>
-        ))}
-      </optgroup>
+      {publicChannels.length > 0 && (
+        <optgroup label="공개">
+          {publicChannels.map((c) => (
+            <option key={c.id} value={c.id}># {c.name}</option>
+          ))}
+        </optgroup>
+      )}
+      {privateChannels.length > 0 && (
+        <optgroup label="비공개">
+          {privateChannels.map((c) => (
+            <option key={c.id} value={c.id}>🔒 {c.name}</option>
+          ))}
+        </optgroup>
+      )}
     </select>
   )
 }
