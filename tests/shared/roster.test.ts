@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { dedupeAndSort, mergeNames, parseRoster, removeParticipant, renameParticipant, resolveMemberName } from '../../src/shared/roster'
+import { dedupeAndSort, mergeNames, parseImportInput, parseRoster, removeParticipant, renameParticipant, resolveMemberName } from '../../src/shared/roster'
 import type { Roster } from '../../src/shared/types'
 
 describe('parseRoster', () => {
@@ -113,5 +113,23 @@ describe('removeParticipant', () => {
   test('대소문자 무시로 항목을 제거한다', () => {
     expect(removeParticipant({ participants: ['Alice', 'Bob'] }, 'BOB'))
       .toEqual({ participants: ['Alice'] })
+  })
+})
+
+describe('parseImportInput', () => {
+  test('줄바꿈·쉼표 혼합 평문을 이름 배열로 파싱한다', () => {
+    expect(parseImportInput('Alice\nBob, Carol\n\n bob ')).toEqual(['Alice', 'Bob', 'Carol'])
+  })
+  test('빈 입력은 빈 배열', () => {
+    expect(parseImportInput('   ')).toEqual([])
+  })
+  test('participants 객체 JSON을 인식한다', () => {
+    expect(parseImportInput('{"participants":["Alice","Bob"]}')).toEqual(['Alice', 'Bob'])
+  })
+  test('문자열 배열 JSON을 인식한다', () => {
+    expect(parseImportInput('["Carol","Alice"]')).toEqual(['Alice', 'Carol'])
+  })
+  test('깨진 JSON은 throw', () => {
+    expect(() => parseImportInput('{oops')).toThrow()
   })
 })

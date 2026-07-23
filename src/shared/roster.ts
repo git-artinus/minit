@@ -32,6 +32,23 @@ export function dedupeAndSort(names: string[]): string[] {
   return out.sort((a, b) => a.localeCompare(b, 'ko'))
 }
 
+// 붙여넣기/파일 입력을 이름 배열로 파싱한다. { 또는 [ 로 시작하면 JSON으로 인식하고(객체는
+// parseRoster로 검증, 배열은 문자열 배열로), 아니면 줄바꿈·쉼표 구분 평문으로 처리한다.
+// 항상 dedupeAndSort로 정규화. 깨진 JSON은 JSON.parse/parseRoster가 throw한다.
+export function parseImportInput(text: string): string[] {
+  const trimmed = text.trim()
+  if (trimmed === '') return []
+  if (trimmed.startsWith('[')) {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (!Array.isArray(parsed)) throw new Error('JSON 배열이 아니다')
+    return dedupeAndSort(parsed.map(String))
+  }
+  if (trimmed.startsWith('{')) {
+    return dedupeAndSort(parseRoster(trimmed).participants)
+  }
+  return dedupeAndSort(trimmed.split(/[\n,]/))
+}
+
 // 기존 로스터에 없는 이름만 병합하고, 미리보기용으로 신규/중복(건너뜀) 수를 함께 반환한다.
 export function mergeNames(
   roster: Roster,
