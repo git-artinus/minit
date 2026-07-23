@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseRoster, resolveMemberName } from '../../src/shared/roster'
+import { dedupeAndSort, mergeNames, parseRoster, resolveMemberName } from '../../src/shared/roster'
 import type { Roster } from '../../src/shared/types'
 
 describe('parseRoster', () => {
@@ -55,5 +55,33 @@ describe('resolveMemberName', () => {
 
   test('roster가 null이면 trim된 input을 그대로 반환한다', () => {
     expect(resolveMemberName(null, '  외부손님  ')).toBe('외부손님')
+  })
+})
+
+describe('dedupeAndSort', () => {
+  // 정렬 결과는 localeCompare('ko') collation 순서를 그대로 따른다(풀 ICU 기준 한글이 라틴
+  // 문자보다 먼저 온다). dedup 자체(대소문자 무시·첫 표기 승리)는 정렬 전 ['Bob','alice','홍길동'].
+  test('trim·빈값 제거·대소문자 무시 dedup(첫 표기 승리)·한국어 정렬', () => {
+    expect(dedupeAndSort([' Bob ', 'alice', 'Alice', '', 'bob', '홍길동'])).toEqual([
+      '홍길동',
+      'alice',
+      'Bob'
+    ])
+  })
+})
+
+describe('mergeNames', () => {
+  test('기존에 없는 이름만 추가하고 신규/중복 수를 센다', () => {
+    const r = mergeNames({ participants: ['Alice'] }, ['Bob', 'alice', 'Carol'])
+    expect(r.roster.participants).toEqual(['Alice', 'Bob', 'Carol'])
+    expect(r.addedCount).toBe(2)
+    expect(r.skippedCount).toBe(1)
+  })
+
+  test('배치 내 중복·빈값은 정리되어 카운트에 반영된다', () => {
+    const r = mergeNames({ participants: [] }, ['Bob', 'bob', '', '  '])
+    expect(r.roster.participants).toEqual(['Bob'])
+    expect(r.addedCount).toBe(1)
+    expect(r.skippedCount).toBe(0)
   })
 })
