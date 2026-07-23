@@ -11,7 +11,7 @@ export function RosterSection(): React.JSX.Element {
   const [importText, setImportText] = useState('')
 
   useEffect(() => {
-    window.minuting.getRoster().then((r) => setRoster((r as Roster | null) ?? { participants: [] })).catch(() => {})
+    window.minuting.getRoster().then((r) => setRoster((r as Roster | null) ?? { participants: [] })).catch(() => setError('참석자 목록을 불러오지 못했습니다.'))
   }, [])
 
   const addNames = async (): Promise<void> => {

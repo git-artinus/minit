@@ -301,12 +301,14 @@ body {
   animation: modal-in var(--motion-base);
 }
 .modal.modal-wide { width: 420px; }
-.modal input {
+.modal input,
+.modal textarea {
   padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius);
   background: var(--color-bg); color: var(--color-text); font-size: var(--fs-sm);
   transition: border-color var(--motion-base), box-shadow var(--motion-base);
 }
-.modal input:focus {
+.modal input:focus,
+.modal textarea:focus {
   outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 .modal select {
@@ -406,7 +408,8 @@ body {
   direction: rtl; text-align: left; /* 길면 좌측을 생략(경로 끝부분이 더 유의미) */
 }
 .settings-modal input,
-.settings-modal select { font-size: var(--fs-base); }
+.settings-modal select,
+.settings-modal textarea { font-size: var(--fs-base); }
 .settings-modal .setting-label { font-size: var(--fs-md); }
 .settings-modal .setting-desc { font-size: var(--fs-base); }
 .settings-modal .setting-path { font-size: var(--fs-base); }

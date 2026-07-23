@@ -360,7 +360,7 @@ export function registerIpc(win: BrowserWindow, opts: { onRecordingState: (r: bo
   ipcMain.handle('roster:merge', (_e, names: unknown) => {
     if (!Array.isArray(names) || !names.every((n) => typeof n === 'string')) throw new Error('invalid')
     const result = mergeNames(readRoster(), names)
-    writeRoster(result.roster)
+    if (result.addedCount > 0) writeRoster(result.roster)
     return result
   })
 
