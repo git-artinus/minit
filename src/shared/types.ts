@@ -1,0 +1,72 @@
+export interface TranscriptSegment { startMs: number; text: string }
+export interface ActionItem { text: string; assignee?: string; due?: string }
+export interface MeetingMeta {
+  title: string; date: string /* ISO8601 */; durationMin: number; participants: string[]
+  // 기록자(v0.4.0 ③b) — GitHub 로그인 상태일 때만 채워진다(로그인 login명). 비로그인 시 생략.
+  recorder?: string
+}
+export interface Meeting extends MeetingMeta {
+  filename: string; summary: string; actionItems: ActionItem[]; segments: TranscriptSegment[]
+  pendingPush?: boolean  // push 실패 상태 표시용 (storage가 설정)
+}
+export type PipelineStage = 'transcribing' | 'summarizing' | 'saving' | 'done'
+export interface PipelineStatus {
+  recordingId: string; stage: PipelineStage
+  error?: { stage: PipelineStage; message: string }
+  filename?: string  // saving 이후 채워짐
+}
+export interface EnvReport {
+  git: boolean; claude: boolean; whisper: boolean; model: boolean; repoRoot: string
+}
+// 개인 로스터(v0.4.0 ③a) — 회사 명단(teams 구조)을 폐기하고 사용자별 ~/.minit/participants.json에
+// 저장하는 평평한 이름 목록으로 재컨셉했다. 팀 구조·한글 이름 병기는 더 이상 없다.
+export interface Roster { participants: string[] }
+export interface AppSettings {
+  repoRoot: string; autoPush: boolean
+  // Slack 봇 토큰 자체는 절대 렌더러로 반환하지 않는다(slack:tokenState의 saved만 노출).
+  slackChannelId: string | null; slackChannelName: string | null; slackPromptShown: boolean
+  githubRepo: string | null; githubPromptShown: boolean
+  // GitHub 자동 동기화(업로드·pull) 실행 여부(v0.4.0 ④) — 레포를 처음 선택하면 자동으로 켜진다.
+  githubSync: boolean
+  // 저장 위치 "기본값으로 재설정" 버튼용(v0.3.1 Fix 3) — main의 minitHome() 값.
+  defaultRepoRoot: string
+  // 저장 위치(repoRoot)가 git 레포(.git 존재)인지 — "자동 업로드(Git Push)" 스위치 노출 조건(v0.4.0 ④).
+  repoRootIsGitRepo: boolean
+}
+
+export interface SlackTokenState {
+  saved: boolean
+}
+
+export interface SlackChannel {
+  id: string
+  name: string
+  isPrivate: boolean
+}
+
+export interface GithubLoginState {
+  loggedIn: boolean
+  login?: string
+  repo: string | null
+}
+
+export type GithubLoginStatusEvent =
+  | { status: 'success'; login: string }
+  | { status: 'expired' }
+  | { status: 'denied' }
+  | { status: 'error'; message: string }
+
+// 자동 업데이트(v0.4.0 ③b) — electron-updater 결과를 정규화한 형태(main/updater.ts 참조).
+// error(v0.4.1) — 저장소가 private인 동안 업데이트 피드(GitHub Releases)에 접근할 수 없을 때
+// ipc.ts가 classifyUpdateError로 분류해 실어 보낸다. 렌더러는 이를 오류가 아닌 안내로 표시한다.
+export interface UpdateCheckResult {
+  available: boolean
+  version?: string
+  error?: 'feed_unreachable'
+}
+
+export interface UpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+}
