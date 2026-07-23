@@ -111,7 +111,7 @@ body {
    ============================================================ */
 .btn-primary,
 .btn-ghost {
-  height: 34px; padding: 0 14px;
+  height: 32px; padding: 0 var(--sp-3);
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: var(--radius); font-size: var(--fs-base); font-weight: 600; line-height: 1;
   cursor: pointer; white-space: nowrap;
@@ -127,7 +127,7 @@ body {
 }
 /* hero 액션(회의 시작/녹음 시작) — 유일하게 의도적으로 더 큰 예외(풀폭 1차 CTA). 다른 화면과
    같은 행에 나란히 서지 않으므로 규격 통일 대상이 아니다. */
-.btn-hero { width: 100%; height: 44px; font-size: var(--fs-md); box-shadow: var(--shadow-sm); }
+.btn-hero { width: 100%; height: 40px; font-size: var(--fs-md); box-shadow: var(--shadow-sm); }
 .btn-hero:hover { box-shadow: var(--shadow-md); }
 
 .btn-ghost {
@@ -140,7 +140,7 @@ body {
 }
 
 .icon-btn {
-  width: 36px; height: 36px; flex-shrink: 0;
+  width: 32px; height: 32px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--color-border); border-radius: var(--radius);
   background: transparent; color: var(--color-text-muted); cursor: pointer;
