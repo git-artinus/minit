@@ -10,6 +10,7 @@ import type {
 import { useMeetings } from '../state/meetings'
 import { GithubConnectFlow } from './GithubConnectFlow'
 import { RosterSection } from './RosterSection'
+import { SlackChannelSelect } from './SlackChannelSelect'
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -281,11 +282,6 @@ export function SettingsModal(props: {
 
   const githubSyncEnabled = !!(github?.loggedIn && github.repo)
 
-  // optgroup(공개/비공개)으로 나눠 이름순 정렬 — 채널이 많아도 찾기 쉽도록(검색 대신 정렬로 대응).
-  const byName = (a: SlackChannel, b: SlackChannel): number => a.name.localeCompare(b.name)
-  const publicSlackChannels = (slackChannels ?? []).filter((c) => !c.isPrivate).sort(byName)
-  const privateSlackChannels = (slackChannels ?? []).filter((c) => c.isPrivate).sort(byName)
-
   return (
     <div className="modal-backdrop" onClick={props.onClose}>
       <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
@@ -427,32 +423,25 @@ export function SettingsModal(props: {
                   아직 Minit 봇이 추가된 채널이 없습니다. 위 안내대로 초대 후 새로고침하세요.
                 </div>
               ) : (
-                <select
+                <SlackChannelSelect
+                  channels={slackChannels}
                   value={settings?.slackChannelId ?? ''}
                   onFocus={loadSlackChannelOptions}
-                  onChange={(e) => {
-                    const channel = (slackChannels ?? []).find((c) => c.id === e.target.value)
+                  onChange={(value) => {
+                    const channel = (slackChannels ?? []).find((c) => c.id === value)
                     if (channel) selectSlackChannel(channel)
                   }}
-                >
-                  <option value="">채널을 선택하세요</option>
-                  {/* 목록이 아직 로딩 전이라도 현재 선택된 채널은 옵션으로 보여준다(GitHub 레포 선택과 동일한 관례). */}
-                  {slackChannels === null && settings?.slackChannelId && (
-                    <option value={settings.slackChannelId}>
-                      {settings.slackChannelName ? `# ${settings.slackChannelName}` : settings.slackChannelId}
-                    </option>
-                  )}
-                  <optgroup label="공개">
-                    {publicSlackChannels.map((c) => (
-                      <option key={c.id} value={c.id}># {c.name}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="비공개">
-                    {privateSlackChannels.map((c) => (
-                      <option key={c.id} value={c.id}>🔒 {c.name}</option>
-                    ))}
-                  </optgroup>
-                </select>
+                  leading={
+                    <>
+                      <option value="">채널을 선택하세요</option>
+                      {slackChannels === null && settings?.slackChannelId && (
+                        <option value={settings.slackChannelId}>
+                          {settings.slackChannelName ? `# ${settings.slackChannelName}` : settings.slackChannelId}
+                        </option>
+                      )}
+                    </>
+                  }
+                />
               )}
               <div className="setting-path-row">
                 <button type="button" className="btn-ghost" onClick={loadSlackChannels} disabled={slackChannelsLoading}>
