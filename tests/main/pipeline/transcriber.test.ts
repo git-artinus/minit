@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseWhisperJson, transcribe } from '../../../src/main/pipeline/transcriber'
+import { parseWhisperSegments, transcribe } from '../../../src/main/pipeline/transcriber'
 
 // whisper-cli -oj 출력 형식 (offsets는 밀리초)
 const whisperOut = JSON.stringify({
@@ -10,17 +10,20 @@ const whisperOut = JSON.stringify({
   ],
 })
 
-describe('parseWhisperJson', () => {
-  test('세그먼트 텍스트를 trim하고 offsets.from을 startMs로 쓴다', () => {
-    expect(parseWhisperJson(whisperOut)).toEqual([
-      { startMs: 0, text: '오늘 스프린트 목표부터 정리하겠습니다.' },
-      { startMs: 4000, text: '지난주 이슈 공유드립니다.' },
-    ])
+describe('parseWhisperSegments', () => {
+  test('whisper offsets에서 startMs/endMs/text를 추출한다', () => {
+    const raw = JSON.stringify({
+      transcription: [
+        { offsets: { from: 0, to: 3000 }, text: ' 안녕하세요 ' },
+        { offsets: { from: 3200, to: 4000 }, text: '' },
+      ],
+    })
+    expect(parseWhisperSegments(raw)).toEqual([{ startMs: 0, endMs: 3000, text: '안녕하세요' }])
   })
 })
 
 describe('transcribe', () => {
-  test('whisper-cli를 올바른 인자로 실행하고 JSON 출력 파일을 파싱한다', async () => {
+  test('whisper-cli를 올바른 인자로 실행하고 JSON 출력을 문단 병합해 반환한다', async () => {
     const calls: string[][] = []
     const segments = await transcribe({
       run: async (cmd, args) => { calls.push([cmd, ...args]); return { stdout: '' } },
@@ -33,6 +36,11 @@ describe('transcribe', () => {
       'whisper-cli', '-m', '/ud/models/m.bin', '-f', '/tmp/rec.wav',
       '-l', 'ko', '-oj', '-of', '/tmp/rec',
     ])
-    expect(segments).toHaveLength(2)
+    // 두 세그먼트 사이 gap 0ms < 문단 임계값 → 하나의 문단으로 병합된다.
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toEqual({
+      startMs: 0,
+      text: '오늘 스프린트 목표부터 정리하겠습니다. 지난주 이슈 공유드립니다.',
+    })
   })
 })
