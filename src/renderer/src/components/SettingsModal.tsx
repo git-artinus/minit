@@ -359,8 +359,6 @@ export function SettingsModal(props: {
 
         <RosterSection />
 
-        <div className="setting-divider" />
-
         <div className="setting-row">
           <div className="setting-label">연동 (Slack)</div>
           <div className="setting-desc">
@@ -469,8 +467,6 @@ export function SettingsModal(props: {
           {slackError && <p className="setting-error">{slackError}</p>}
         </div>
 
-        <div className="setting-divider" />
-
         <div className="setting-row">
           <div className="setting-label">GitHub 계정</div>
           <div className="setting-desc">
@@ -530,8 +526,6 @@ export function SettingsModal(props: {
             <span className="switch-knob" />
           </button>
         </div>
-
-        <div className="setting-divider" />
 
         <div className="setting-row">
           <div className="setting-label">버전</div>

@@ -386,8 +386,8 @@ body {
 .settings-header { display: flex; align-items: center; justify-content: space-between; }
 .settings-header h2 { font-size: var(--fs-lg); font-weight: 600; }
 .setting-row, .setting-block {
-  display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 0;
+  border-bottom: 1.5px solid var(--color-border);
 }
 .setting-row:last-of-type { border-bottom: none; }
 /* 설정 화면 글자 크기 상향(v0.3.1 Fix 2) — 실사용 피드백(너무 작아 읽기 어려움) 대응.
@@ -398,7 +398,6 @@ body {
    화면마다 버튼 크기가 달라지는 문제 재발 방지). */
 .setting-label { font-weight: 600; }
 .setting-desc { color: var(--color-text-muted); line-height: 1.5; }
-.setting-divider { border-top: 1px solid var(--color-border-subtle); margin: var(--sp-1) 0; }
 .setting-path-row { display: flex; align-items: center; gap: var(--sp-2); }
 .setting-path {
   flex: 1; min-width: 0; font-family: ui-monospace, monospace;
@@ -440,18 +439,42 @@ body {
 .switch.on .switch-knob { transform: translateX(18px); }
 .switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); }
 
-/* 참석자 관리(RosterSection) — setting-row와 동일한 구획 톤(패딩·구분선)을 공유한다(위 .setting-row 규칙 참고). */
-.roster-add { display: flex; gap: var(--sp-2); margin: var(--sp-2) 0; }
+/* 참석자 관리(RosterSection) — Export/Import 팝오버 + 이름추가·목록을 감싼 패널(리스트 톤). */
+.roster-io { display: flex; align-items: center; gap: var(--sp-2); position: relative; }
+.roster-popover-wrap { position: relative; }
+.roster-popover {
+  position: absolute; top: calc(100% + var(--sp-1)); left: 0; z-index: 20; min-width: 160px;
+  display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  background: var(--color-surface); box-shadow: var(--shadow-md);
+}
+.roster-popover-item {
+  text-align: left; padding: var(--sp-2); border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--color-text); font-size: var(--fs-base); cursor: pointer;
+}
+.roster-popover-item:hover { background: var(--color-surface-2); }
+.roster-import-popover { min-width: 280px; }
+.roster-import-text { width: 100%; min-height: 72px; resize: vertical; font-family: inherit; margin-top: var(--sp-2); }
+.roster-import-preview { margin-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); }
+.roster-import-buttons { display: flex; gap: var(--sp-2); }
+.roster-toast {
+  font-size: var(--fs-sm); color: var(--color-text-muted);
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-pill);
+}
+.roster-panel { border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
+.roster-add {
+  display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
 .roster-add-field { flex: 1; }
-.roster-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
-.roster-row { display: flex; align-items: center; gap: var(--sp-2); }
-.roster-name { flex: 1; cursor: pointer; padding: var(--sp-1) 0; }
+.roster-list { list-style: none; margin: 0; padding: 0; }
+.roster-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); }
+.roster-row:not(:last-child) { border-bottom: 1px solid var(--color-border-subtle); }
+.roster-row:hover { background: var(--color-surface-2); }
+.roster-name { flex: 1; }
 .roster-edit-field { flex: 1; }
-
-.roster-io { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
-.roster-io-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.roster-import-text { width: 100%; min-height: 72px; resize: vertical; font-family: inherit; }
-.roster-import-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.roster-empty { padding: var(--sp-3) var(--sp-2); margin: 0; text-align: center; color: var(--color-text-muted); }
 
 /* ============================================================
    회의 상세
