@@ -180,3 +180,12 @@ export function notifySlackForMeeting(
   const token = loadToken()
   if (token) send(meeting, token, channelId)
 }
+
+// 회의별 채널 override(3-상태)를 설정 기본값과 합쳐 최종 발송 채널을 정한다.
+// undefined = override 안 함(기본값 사용) / null = 이번 회의 발송 안 함 / string = 이 채널로.
+export function resolveSlackChannelId(
+  override: string | null | undefined,
+  fallback: string | null
+): string | null {
+  return override !== undefined ? override : fallback
+}

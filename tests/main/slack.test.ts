@@ -5,6 +5,7 @@ import {
   listChannels,
   notifySlackForMeeting,
   postChatMessage,
+  resolveSlackChannelId,
   sendSlackNotification
 } from '../../src/main/slack'
 import type { Meeting } from '../../src/shared/types'
@@ -393,5 +394,20 @@ describe('notifySlackForMeeting', () => {
     notifySlackForMeeting(m, channel, loadToken, send)
 
     expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel)
+  })
+})
+
+describe('resolveSlackChannelId', () => {
+  test('override 미지정(undefined)이면 설정 기본값을 사용한다', () => {
+    expect(resolveSlackChannelId(undefined, 'C_DEFAULT')).toBe('C_DEFAULT')
+  })
+  test('override가 채널 id면 그 채널로 재정의한다', () => {
+    expect(resolveSlackChannelId('C_OVERRIDE', 'C_DEFAULT')).toBe('C_OVERRIDE')
+  })
+  test('override가 null이면 발송하지 않는다(null 반환)', () => {
+    expect(resolveSlackChannelId(null, 'C_DEFAULT')).toBeNull()
+  })
+  test('override 미지정이고 기본값도 없으면 null', () => {
+    expect(resolveSlackChannelId(undefined, null)).toBeNull()
   })
 })
