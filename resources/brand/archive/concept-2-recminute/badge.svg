@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Minit · Concept 2 "Rec Minute" — 시계의 분침 + 녹음 버튼 -->
+  <rect x="0" y="0" width="64" height="64" rx="14.5" fill="#FF6B35"/>
+  <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" fill="none">
+    <!-- clock ring -->
+    <circle cx="32" cy="32" r="20"/>
+    <!-- minute hand at 12 -->
+    <path d="M32 30 V17"/>
+  </g>
+  <!-- rec dot -->
+  <circle cx="32" cy="32" r="7" fill="#FFFFFF"/>
+</svg>

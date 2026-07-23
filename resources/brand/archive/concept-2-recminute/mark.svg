@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Minit · Concept 2 mark (two-tone) — 시계는 잉크, REC 도트는 주황 -->
+  <g stroke="#1D1B17" stroke-width="6" stroke-linecap="round" fill="none">
+    <circle cx="32" cy="32" r="20"/>
+    <path d="M32 30 V17"/>
+  </g>
+  <circle cx="32" cy="32" r="7" fill="#FF6B35"/>
+</svg>

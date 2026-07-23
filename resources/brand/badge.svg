@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Minit · Concept 1 "Soundlines" — 소리(웨이브폼)가 회의록(줄글)이 된다 -->
+  <rect x="0" y="0" width="64" height="64" rx="14.5" fill="#FF6B35"/>
+  <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" fill="none">
+    <!-- waveform -->
+    <path d="M16 17 V25"/>
+    <path d="M24 11 V31"/>
+    <path d="M32 15 V27"/>
+    <path d="M40 12 V28"/>
+    <path d="M48 18 V24"/>
+    <!-- text lines -->
+    <path d="M16 38 H48"/>
+    <path d="M16 49 H36"/>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 72" width="252" height="72">
+  <!-- Minit lockup (dark) — Rec Minute badge + wordmark -->
+  <g transform="translate(0,8) scale(0.875)">
+    <rect x="0" y="0" width="64" height="64" rx="14.5" fill="#FF6B35"/>
+    <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" fill="none">
+      <circle cx="32" cy="32" r="20"/>
+      <path d="M32 30 V17"/>
+    </g>
+    <circle cx="32" cy="32" r="7" fill="#FFFFFF"/>
+  </g>
+  <g transform="translate(76,0)">
+    <g stroke="#F0EDE6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M12 58 V22"/>
+      <path d="M12 32 Q12 22 22 22 Q32 22 32 32 V58"/>
+      <path d="M32 32 Q32 22 42 22 Q52 22 52 32 V58"/>
+      <path d="M70 58 V22"/>
+      <path d="M88 58 V22"/>
+      <path d="M88 32 Q88 22 98 22 Q108 22 108 32 V58"/>
+      <path d="M126 58 V22"/>
+      <path d="M146 12 V47 Q146 58 157 58"/>
+      <path d="M137 22 H158"/>
+    </g>
+    <circle cx="70" cy="6" r="5.5" fill="#FF6B35"/>
+    <circle cx="126" cy="6" r="5.5" fill="#FF6B35"/>
+  </g>
+</svg>

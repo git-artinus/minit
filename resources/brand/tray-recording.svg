@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Minit 트레이(녹음 중) — 웨이브 바 대신 채운 REC 닷으로 실루엣 구분 -->
+  <circle cx="8" cy="5" r="3" fill="#000000"/>
+  <g stroke="#000000" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M3 11H13"/>
+    <path d="M3 14.5H9"/>
+  </g>
+</svg>
