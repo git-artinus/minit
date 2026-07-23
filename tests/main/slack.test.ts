@@ -1,0 +1,397 @@
+import { describe, expect, test, vi } from 'vitest'
+import {
+  buildPostMessageBody,
+  escapeMrkdwn,
+  listChannels,
+  notifySlackForMeeting,
+  postChatMessage,
+  sendSlackNotification
+} from '../../src/main/slack'
+import type { Meeting } from '../../src/shared/types'
+
+function meeting(over: Partial<Meeting> = {}): Meeting {
+  return {
+    filename: '2026-07-22-회의.md',
+    title: '주간 회의',
+    date: '2026-07-22T10:00:00+09:00',
+    durationMin: 30,
+    participants: ['철수', '영희'],
+    summary: '이번 주 진행 상황을 공유했다.',
+    actionItems: [],
+    segments: [],
+    ...over
+  }
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body
+  } as unknown as Response
+}
+
+describe('escapeMrkdwn', () => {
+  test('&, <, > 를 이 순서로 이스케이프한다', () => {
+    expect(escapeMrkdwn('R&D <A>')).toBe('R&amp;D &lt;A&gt;')
+  })
+
+  test('특수문자가 없으면 원문 그대로 반환한다', () => {
+    expect(escapeMrkdwn('그냥 텍스트')).toBe('그냥 텍스트')
+  })
+})
+
+describe('buildPostMessageBody', () => {
+  test('channel·제목(굵게)·날짜·참석자·요약을 포함한다', () => {
+    const body = buildPostMessageBody(meeting(), '#회의록')
+    expect(body.channel).toBe('#회의록')
+    expect(body.text).toContain('*주간 회의*')
+    expect(body.text).toContain('2026-07-22')
+    expect(body.text).toContain('철수, 영희')
+    expect(body.text).toContain('이번 주 진행 상황을 공유했다.')
+  })
+
+  test('참석자가 없으면 참석자 없음 문구를 넣는다', () => {
+    const body = buildPostMessageBody(meeting({ participants: [] }), '#회의록')
+    expect(body.text).toContain('참석자 없음')
+  })
+
+  test('요약이 없으면 "전사만 저장됨" 문구를 넣는다', () => {
+    const body = buildPostMessageBody(meeting({ summary: '' }), '#회의록')
+    expect(body.text).toContain('전사만 저장됨')
+  })
+
+  test('액션아이템이 있으면 체크리스트(mrkdwn)로 넣는다', () => {
+    const body = buildPostMessageBody(
+      meeting({
+        actionItems: [
+          { text: '문서 작성', assignee: '철수', due: '2026-07-25' },
+          { text: '리뷰 요청' }
+        ]
+      }),
+      '#회의록'
+    )
+    expect(body.text).toContain('액션아이템')
+    expect(body.text).toContain('- [ ] 문서 작성 (담당: 철수) (기한: 2026-07-25)')
+    expect(body.text).toContain('- [ ] 리뷰 요청')
+  })
+
+  test('액션아이템이 없으면 액션아이템 섹션을 생략한다', () => {
+    const body = buildPostMessageBody(meeting({ actionItems: [] }), '#회의록')
+    expect(body.text).not.toContain('액션아이템')
+  })
+
+  test('사용자 유래 텍스트(제목·요약·참석자·액션아이템)에 mrkdwn 이스케이프를 적용한다', () => {
+    const body = buildPostMessageBody(
+      meeting({
+        title: 'R&D <기획>',
+        participants: ['A&B', '<C>'],
+        summary: '<script> & 위험',
+        actionItems: [{ text: 'R&D <검토>', assignee: '<팀장>', due: '<2026-08-01>' }]
+      }),
+      '#회의록'
+    )
+    expect(body.text).toContain('*R&amp;D &lt;기획&gt;*')
+    expect(body.text).toContain('A&amp;B, &lt;C&gt;')
+    expect(body.text).toContain('&lt;script&gt; &amp; 위험')
+    expect(body.text).toContain('- [ ] R&amp;D &lt;검토&gt; (담당: &lt;팀장&gt;) (기한: &lt;2026-08-01&gt;)')
+  })
+
+  test('기존처럼 특수문자가 없는 픽스처는 이스케이프 없이 그대로 통과한다', () => {
+    const body = buildPostMessageBody(meeting(), '#회의록')
+    expect(body.text).toContain('*주간 회의*')
+    expect(body.text).toContain('철수, 영희')
+  })
+})
+
+describe('postChatMessage', () => {
+  test('ok:true: 정상 반환', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true })) as unknown as typeof fetch
+    await expect(
+      postChatMessage('xoxb-token', { channel: '#회의록', text: 'hi' }, fetchImpl)
+    ).resolves.toBeUndefined()
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://slack.com/api/chat.postMessage',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer xoxb-token',
+          'Content-Type': 'application/json; charset=utf-8'
+        }),
+        body: JSON.stringify({ channel: '#회의록', text: 'hi' })
+      })
+    )
+  })
+
+  test('HTTP 200이지만 ok:false(not_in_channel): throw', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: false, error: 'not_in_channel' })) as unknown as typeof fetch
+    await expect(
+      postChatMessage('xoxb-token', { channel: '#회의록', text: 'hi' }, fetchImpl)
+    ).rejects.toThrow(/not_in_channel/)
+  })
+
+  test('HTTP 비2xx 응답: throw', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({}, 404)) as unknown as typeof fetch
+    await expect(postChatMessage('xoxb-token', { channel: '#회의록', text: 'hi' }, fetchImpl)).rejects.toThrow(
+      /404/
+    )
+  })
+
+  test('타임아웃: timeoutMs 경과 시 AbortController로 취소하고 실패한다', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn(
+      (_url: string, opts: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+    ) as unknown as typeof fetch
+
+    const promise = postChatMessage('xoxb-token', { channel: '#회의록', text: 'hi' }, fetchImpl, 10_000)
+    const assertion = expect(promise).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await assertion
+    vi.useRealTimers()
+  })
+})
+
+describe('listChannels', () => {
+  test('공개+비공개 혼합 목록을 isPrivate 필드와 함께 반환한다(users.conversations — 봇이 참여한 채널만)', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        channels: [
+          { id: 'C1', name: '회의록', is_private: false },
+          { id: 'C2', name: '비밀채널', is_private: true }
+        ],
+        response_metadata: { next_cursor: '' }
+      })
+    )
+    const fetchImpl = fetchMock as unknown as typeof fetch
+
+    const result = await listChannels('xoxb-token', fetchImpl)
+
+    expect(result).toEqual([
+      { id: 'C1', name: '회의록', isPrivate: false },
+      { id: 'C2', name: '비밀채널', isPrivate: true }
+    ])
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /users\.conversations.*types=public_channel%2Cprivate_channel.*exclude_archived=true.*limit=200/
+      ),
+      expect.objectContaining({ headers: { Authorization: 'Bearer xoxb-token' } })
+    )
+  })
+
+  test('next_cursor가 있으면 다음 페이지를 이어서 조회하고 합쳐서 반환한다', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ok: true,
+          channels: [{ id: 'C1', name: '채널1', is_private: false }],
+          response_metadata: { next_cursor: 'CURSOR1' }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ok: true,
+          channels: [{ id: 'C2', name: '채널2', is_private: false }],
+          response_metadata: { next_cursor: '' }
+        })
+      )
+    const fetchImpl = fetchMock as unknown as typeof fetch
+
+    const result = await listChannels('xoxb-token', fetchImpl)
+
+    expect(result.map((c) => c.id)).toEqual(['C1', 'C2'])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('cursor=CURSOR1'), expect.anything())
+  })
+
+  test('최대 3페이지까지만 따라간다', async () => {
+    const page = (cursor: string): Response =>
+      jsonResponse({
+        ok: true,
+        channels: [{ id: cursor || 'C0', name: 'x', is_private: false }],
+        response_metadata: { next_cursor: 'NEXT' }
+      })
+    const fetchImpl = vi.fn(async () => page('NEXT')) as unknown as typeof fetch
+
+    await listChannels('xoxb-token', fetchImpl)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+  })
+
+  test('ok:false: throw', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: false, error: 'invalid_auth' })) as unknown as typeof fetch
+    await expect(listChannels('xoxb-token', fetchImpl)).rejects.toThrow(/invalid_auth/)
+  })
+
+  test('HTTP 비2xx 응답: throw', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({}, 500)) as unknown as typeof fetch
+    await expect(listChannels('xoxb-token', fetchImpl)).rejects.toThrow(/500/)
+  })
+})
+
+describe('sendSlackNotification', () => {
+  const token = 'xoxb-token'
+  const channel = '#회의록'
+
+  test('정상 경로: buildBody 결과로 post를 호출한다', async () => {
+    const body = { channel, text: 'ok' }
+    const buildBody = vi.fn(() => body)
+    const post = vi.fn(async () => undefined)
+    const log = vi.fn()
+
+    sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(buildBody).toHaveBeenCalledWith(meeting(), channel)
+    expect(post).toHaveBeenCalledWith(token, body, fetch)
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  test('token이 없으면 no-op(post를 호출하지 않는다)', () => {
+    const buildBody = vi.fn()
+    const post = vi.fn()
+    const log = vi.fn()
+
+    expect(() =>
+      sendSlackNotification(meeting(), null, channel, { buildBody, post, fetchImpl: fetch, log })
+    ).not.toThrow()
+    expect(buildBody).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  test('channel이 없으면 no-op(post를 호출하지 않는다)', () => {
+    const buildBody = vi.fn()
+    const post = vi.fn()
+    const log = vi.fn()
+
+    expect(() =>
+      sendSlackNotification(meeting(), token, null, { buildBody, post, fetchImpl: fetch, log })
+    ).not.toThrow()
+    expect(buildBody).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  test('요약이 비어 있으면(전사만 저장됨) no-op(post를 호출하지 않는다)', () => {
+    const buildBody = vi.fn()
+    const post = vi.fn()
+    const log = vi.fn()
+
+    expect(() =>
+      sendSlackNotification(meeting({ summary: '' }), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    ).not.toThrow()
+    expect(buildBody).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  test('요약이 공백 문자뿐이어도 no-op(post를 호출하지 않는다)', () => {
+    const buildBody = vi.fn()
+    const post = vi.fn()
+    const log = vi.fn()
+
+    sendSlackNotification(meeting({ summary: '   \n  ' }), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    expect(buildBody).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  // 회귀 방지: 트랜스크립트(segments) 텍스트는 payload에 포함되지 않아야 한다(현행 유지).
+  test('payload에 트랜스크립트(segments) 텍스트를 포함하지 않는다', () => {
+    const body = buildPostMessageBody(
+      meeting({ segments: [{ startMs: 0, text: '이것은 전사 원문입니다' }] }),
+      '#회의록'
+    )
+    expect(body.text).not.toContain('이것은 전사 원문입니다')
+  })
+
+  test('buildBody가 동기 throw해도 함수 자체는 throw하지 않는다', () => {
+    const buildBody = vi.fn(() => {
+      throw new Error('payload 생성 실패')
+    })
+    const post = vi.fn(async () => undefined)
+    const log = vi.fn()
+
+    expect(() =>
+      sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    ).not.toThrow()
+    expect(post).not.toHaveBeenCalled()
+    expect(log).toHaveBeenCalledTimes(1)
+    // 토큰 원문이 로그에 남지 않아야 한다.
+    expect(log.mock.calls[0].join(' ')).not.toContain(token)
+  })
+
+  test('post가 reject해도 함수 자체는 throw하지 않는다(비동기 실패는 catch로 격리)', async () => {
+    const buildBody = vi.fn(() => ({ channel, text: 'ok' }))
+    const post = vi.fn(async () => {
+      throw new Error('네트워크 오류')
+    })
+    const log = vi.fn()
+
+    expect(() =>
+      sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    ).not.toThrow()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(log).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls[0].join(' ')).not.toContain(token)
+  })
+
+  test('post가 not_in_channel로 reject하면 로그에 "채널에 Minit 봇을 초대하세요" 힌트를 포함한다', async () => {
+    const buildBody = vi.fn(() => ({ channel, text: 'ok' }))
+    const post = vi.fn(async () => {
+      throw new Error('slack: not_in_channel')
+    })
+    const log = vi.fn()
+
+    sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(log).toHaveBeenCalledTimes(1)
+    const logged = log.mock.calls[0].join(' ')
+    expect(logged).toContain('not_in_channel')
+    expect(logged).toContain('채널에 Minit 봇을 초대하세요')
+    expect(logged).not.toContain(token)
+  })
+})
+
+describe('notifySlackForMeeting', () => {
+  const channel = '#회의록'
+
+  test('channelId가 없으면 loadToken·send 모두 호출하지 않는다', () => {
+    const loadToken = vi.fn(() => 'xoxb-token')
+    const send = vi.fn()
+
+    notifySlackForMeeting(meeting(), null, loadToken, send)
+
+    expect(loadToken).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  test('channelId는 있지만 토큰이 없으면 send를 호출하지 않는다', () => {
+    const loadToken = vi.fn(() => null)
+    const send = vi.fn()
+
+    notifySlackForMeeting(meeting(), channel, loadToken, send)
+
+    expect(loadToken).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  test('channelId·토큰이 모두 있으면 send를 호출한다(pipeline:run·summary:regenerate 공용 경로)', () => {
+    const loadToken = vi.fn(() => 'xoxb-token')
+    const send = vi.fn()
+    const m = meeting()
+
+    notifySlackForMeeting(m, channel, loadToken, send)
+
+    expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel)
+  })
+})
