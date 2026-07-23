@@ -1,0 +1,108 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import { electronAPI } from '@electron-toolkit/preload'
+import type {
+  AppSettings,
+  GithubLoginState,
+  GithubLoginStatusEvent,
+  SlackChannel,
+  SlackTokenState,
+  UpdateCheckResult,
+  UpdateProgress
+} from '../shared/types'
+
+// Custom APIs for renderer (template demo — kept until Tasks 12-14 replace the renderer)
+const api = {}
+
+const minutingApi = {
+  checkEnv: () => ipcRenderer.invoke('env:check'),
+  ensureModel: () => ipcRenderer.invoke('model:ensure'),
+  onModelProgress: (cb: (r: number, t: number) => void) => {
+    const listener = (_: unknown, r: number, t: number) => cb(r, t)
+    ipcRenderer.on('model:progress', listener)
+    return () => ipcRenderer.removeListener('model:progress', listener)
+  },
+  flushChunk: (id: string, chunk: ArrayBuffer) => ipcRenderer.invoke('recording:flush', id, chunk),
+  findRecoverableRecordings: () => ipcRenderer.invoke('recording:recoverable'),
+  readRecoverableRecording: (id: string) => ipcRenderer.invoke('recording:read', id),
+  setRecordingState: (r: boolean) => ipcRenderer.invoke('recording:state', r),
+  runPipeline: (meta: unknown, wav: ArrayBuffer) => ipcRenderer.invoke('pipeline:run', meta, wav),
+  onPipelineStatus: (cb: (s: unknown) => void) => {
+    const listener = (_: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('pipeline:status', listener)
+    return () => ipcRenderer.removeListener('pipeline:status', listener)
+  },
+  listMeetings: () => ipcRenderer.invoke('meetings:list'),
+  getRoster: () => ipcRenderer.invoke('roster:get'),
+  addRosterParticipants: (names: string[]) => ipcRenderer.invoke('roster:add', names),
+  regenerateSummary: (filename: string) => ipcRenderer.invoke('summary:regenerate', filename),
+  onTrayCommand: (cb: (cmd: string) => void) => {
+    const listener = (_: unknown, cmd: string) => cb(cmd)
+    ipcRenderer.on('tray:command', listener)
+    return () => ipcRenderer.removeListener('tray:command', listener)
+  },
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
+  updateSettings: (
+    patch: {
+      repoRoot?: string; autoPush?: boolean
+      slackPromptShown?: boolean
+      githubRepo?: string | null; githubPromptShown?: boolean; githubSync?: boolean
+    }
+  ): Promise<AppSettings> => ipcRenderer.invoke('settings:update', patch),
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:pickFolder'),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  // GitHub OAuth(Device Flow) + 동기화(v0.3.0 ③)
+  startGithubLogin: (): Promise<{ userCode: string; verificationUri: string }> =>
+    ipcRenderer.invoke('github:startLogin'),
+  onGithubLoginStatus: (cb: (e: GithubLoginStatusEvent) => void) => {
+    const listener = (_: unknown, e: GithubLoginStatusEvent) => cb(e)
+    ipcRenderer.on('github:login-status', listener)
+    return () => ipcRenderer.removeListener('github:login-status', listener)
+  },
+  getGithubLoginState: (): Promise<GithubLoginState> => ipcRenderer.invoke('github:loginState'),
+  cancelLogin: (): Promise<void> => ipcRenderer.invoke('github:cancelLogin'),
+  githubLogout: (): Promise<void> => ipcRenderer.invoke('github:logout'),
+  listGithubRepos: (): Promise<string[]> => ipcRenderer.invoke('github:listRepos'),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
+  // Slack 봇 토큰(암호화 저장) + 채널 선택(v0.4.0 ②) — 토큰 원문은 절대 반환되지 않는다.
+  getSlackTokenState: (): Promise<SlackTokenState> => ipcRenderer.invoke('slack:tokenState'),
+  saveSlackToken: (token: string): Promise<SlackTokenState> => ipcRenderer.invoke('slack:saveToken', token),
+  clearSlackToken: (): Promise<void> => ipcRenderer.invoke('slack:clearToken'),
+  listSlackChannels: (): Promise<SlackChannel[]> => ipcRenderer.invoke('slack:listChannels'),
+  selectSlackChannel: (channelId: string, channelName: string): Promise<AppSettings> =>
+    ipcRenderer.invoke('slack:selectChannel', channelId, channelName),
+  // 자동 업데이트(v0.4.0 ③b)
+  checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
+  onUpdateAvailable: (cb: (r: UpdateCheckResult) => void) => {
+    const listener = (_: unknown, r: UpdateCheckResult) => cb(r)
+    ipcRenderer.on('update:available', listener)
+    return () => ipcRenderer.removeListener('update:available', listener)
+  },
+  onUpdateProgress: (cb: (p: UpdateProgress) => void) => {
+    const listener = (_: unknown, p: UpdateProgress) => cb(p)
+    ipcRenderer.on('update:progress', listener)
+    return () => ipcRenderer.removeListener('update:progress', listener)
+  },
+}
+
+// Use `contextBridge` APIs to expose Electron APIs to
+// renderer only if context isolation is enabled, otherwise
+// just add to the DOM global.
+if (process.contextIsolated) {
+  try {
+    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('minuting', minutingApi)
+  } catch (error) {
+    console.error(error)
+  }
+} else {
+  // @ts-ignore (define in dts)
+  window.electron = electronAPI
+  // @ts-ignore (define in dts)
+  window.api = api
+  // @ts-ignore (define in dts)
+  window.minuting = minutingApi
+}
+
+export type MinutingApi = typeof minutingApi
