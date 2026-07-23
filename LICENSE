@@ -1,0 +1,12 @@
+Copyright (c) 2026 Artinus. All rights reserved.
+
+This repository's source code is made available for viewing and reference
+purposes only. No license is granted to use, copy, modify, merge, publish,
+distribute, sublicense, or sell copies of this software, in whole or in
+part, without prior written permission from the copyright holder.
+
+Third-party components bundled with this software (including whisper.cpp
+and Electron) remain subject to their respective licenses.
+
+The licensing of this project may change in the future (e.g., to an open
+source license such as MIT).
