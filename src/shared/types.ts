@@ -4,6 +4,9 @@ export interface MeetingMeta {
   title: string; date: string /* ISO8601 */; durationMin: number; participants: string[]
   // 기록자(v0.4.0 ③b) — GitHub 로그인 상태일 때만 채워진다(로그인 login명). 비로그인 시 생략.
   recorder?: string
+  // 회의별 Slack 발송 채널 override(v0.6.0 #2) — undefined=설정 기본값 사용 /
+  // null=이번 회의 발송 안 함 / string=이 채널로. 회의록 파일에는 저장하지 않는 전송 시점 전용 값.
+  slackChannelId?: string | null
 }
 export interface Meeting extends MeetingMeta {
   filename: string; summary: string; actionItems: ActionItem[]; segments: TranscriptSegment[]
