@@ -44,4 +44,38 @@ describe('mergeParagraphs', () => {
     expect(mergeParagraphs([])).toEqual([])
     expect(mergeParagraphs([{ startMs: 0, text: '  ' }])).toEqual([])
   })
+
+  test('pause 경계: gap 정확히 1000ms면 분리, 999ms면 병합', () => {
+    expect(
+      mergeParagraphs([
+        { startMs: 0, endMs: 0, text: 'A' },
+        { startMs: 1000, endMs: 1000, text: 'B' },
+      ]).map((p) => p.text)
+    ).toEqual(['A', 'B'])
+    expect(
+      mergeParagraphs([
+        { startMs: 0, endMs: 0, text: 'A' },
+        { startMs: 999, endMs: 999, text: 'B' },
+      ]).map((p) => p.text)
+    ).toEqual(['A B'])
+  })
+
+  test('sentence 경계: 문장부호+gap 정확히 400ms면 분리, 399ms면 병합', () => {
+    expect(
+      mergeParagraphs([
+        { startMs: 0, endMs: 0, text: '끝.' },
+        { startMs: 400, endMs: 400, text: '다음' },
+      ]).map((p) => p.text)
+    ).toEqual(['끝.', '다음'])
+    expect(
+      mergeParagraphs([
+        { startMs: 0, endMs: 0, text: '끝.' },
+        { startMs: 399, endMs: 399, text: '다음' },
+      ]).map((p) => p.text)
+    ).toEqual(['끝. 다음'])
+  })
+
+  test('단일 비어있지 않은 세그먼트는 그대로 통과', () => {
+    expect(mergeParagraphs([{ startMs: 0, text: 'hi' }])).toEqual([{ startMs: 0, text: 'hi' }])
+  })
 })
