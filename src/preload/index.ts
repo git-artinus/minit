@@ -34,6 +34,12 @@ const minutingApi = {
   listMeetings: () => ipcRenderer.invoke('meetings:list'),
   getRoster: () => ipcRenderer.invoke('roster:get'),
   addRosterParticipants: (names: string[]) => ipcRenderer.invoke('roster:add', names),
+  renameRosterParticipant: (from: string, to: string) => ipcRenderer.invoke('roster:rename', { from, to }),
+  removeRosterParticipant: (name: string) => ipcRenderer.invoke('roster:remove', name),
+  mergeRoster: (names: string[]) => ipcRenderer.invoke('roster:merge', names),
+  replaceRoster: (names: string[]) => ipcRenderer.invoke('roster:replace', names),
+  exportRosterFile: () => ipcRenderer.invoke('roster:exportFile'),
+  importRosterFile: () => ipcRenderer.invoke('roster:importFile'),
   regenerateSummary: (filename: string) => ipcRenderer.invoke('summary:regenerate', filename),
   onTrayCommand: (cb: (cmd: string) => void) => {
     const listener = (_: unknown, cmd: string) => cb(cmd)

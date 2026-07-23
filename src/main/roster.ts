@@ -64,3 +64,5 @@ export function addParticipants(
   saveRoster(configDir, roster, writeFile)
   return roster
 }
+
+export { dedupeAndSort, mergeNames, parseImportInput, removeParticipant, renameParticipant } from '../shared/roster'
