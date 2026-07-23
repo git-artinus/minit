@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
-import type { MeetingMeta, Roster } from '../../../shared/types'
+import type { MeetingMeta, Roster, SlackChannel, AppSettings, SlackTokenState } from '../../../shared/types'
 import { defaultMeetingTitle, localIsoNow } from '../../../shared/meeting-file'
 import { resolveMemberName } from '../../../shared/roster'
+import { SlackChannelSelect } from './SlackChannelSelect'
+import {
+  CHANNEL_DEFAULT,
+  CHANNEL_NONE,
+  channelOverrideToValue,
+  channelValueToOverride
+} from './start-meeting-channel'
 
 export function StartMeetingModal(props: {
   knownParticipants: string[]
@@ -15,12 +22,35 @@ export function StartMeetingModal(props: {
   const [roster, setRoster] = useState<Roster | null | undefined>(undefined)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
+  // Slack 채널 override(#2) — undefined=설정 기본값 사용 / null=발송 안 함 / string=이 채널로.
+  const [channelOverride, setChannelOverride] = useState<string | null | undefined>(undefined)
+  const [slackDefault, setSlackDefault] = useState<{ id: string | null; name: string | null }>({ id: null, name: null })
+  const [slackTokenSaved, setSlackTokenSaved] = useState(false)
+  const [slackChannels, setSlackChannels] = useState<SlackChannel[] | null>(null)
+
   useEffect(() => {
     window.minuting
       .getRoster()
       .then((r) => setRoster(r as Roster | null))
       .catch(() => setRoster(null))
   }, [])
+
+  useEffect(() => {
+    window.minuting
+      .getSettings()
+      .then((s: AppSettings) => setSlackDefault({ id: s.slackChannelId, name: s.slackChannelName }))
+      .catch(() => {})
+    window.minuting
+      .getSlackTokenState()
+      .then((t: SlackTokenState) => setSlackTokenSaved(t.saved))
+      .catch(() => {})
+  }, [])
+
+  // 드롭다운을 처음 열 때(focus) 목록을 지연 조회한다(설정 화면과 동일 관례).
+  const loadChannels = (): void => {
+    if (slackChannels) return
+    window.minuting.listSlackChannels().then(setSlackChannels).catch(() => {})
+  }
 
   // 로스터 파일이 있어도 참석자가 비어 있으면(신규 사용자 등) 자유 입력 폴백을 유지한다.
   const hasRoster = !!roster && roster.participants.length > 0
@@ -91,7 +121,8 @@ export function StartMeetingModal(props: {
       title: title.trim() || defaultMeetingTitle(now),
       date: localIsoNow(now),
       durationMin: 0, // 종료 시 갱신
-      participants: finalParticipants
+      participants: finalParticipants,
+      slackChannelId: channelOverride
     })
     // 자동 등록(v0.4.0 ③a) — 로스터에 없는 이름을 등록한다. 실패해도 회의 시작 자체는
     // 이미 onStart로 진행되었으므로 격리한다(회귀 없이 조용히 무시).
@@ -178,6 +209,25 @@ export function StartMeetingModal(props: {
           tagInput
         ) : (
           <p className="env-desc">명단 불러오는 중…</p>
+        )}
+        {slackTokenSaved && (
+          <div className="chip-group">
+            <div className="chip-group-label">요약 발송</div>
+            <SlackChannelSelect
+              channels={slackChannels}
+              value={channelOverrideToValue(channelOverride)}
+              onFocus={loadChannels}
+              onChange={(value) => setChannelOverride(channelValueToOverride(value))}
+              leading={
+                <>
+                  <option value={CHANNEL_DEFAULT}>
+                    기본 채널{slackDefault.name ? ` (# ${slackDefault.name})` : ' (설정 안 됨)'}
+                  </option>
+                  <option value={CHANNEL_NONE}>(발송 안 함)</option>
+                </>
+              }
+            />
+          </div>
         )}
         <button className="btn-primary" onClick={start}>
           녹음 시작
