@@ -18,7 +18,7 @@ describe('transcribeRaw', () => {
       calls.push(args)
       return { stdout: '' }
     }
-    const readFile = (_p: string) => jsonOf([{ from: 0, to: 2000, text: '발화' }])
+    const readFile = (): string => jsonOf([{ from: 0, to: 2000, text: '발화' }])
     const segs = await transcribeRaw({ ...baseDeps, run, readFile })
     const args = calls[0]
     expect(args).toContain('-mc')
@@ -34,7 +34,7 @@ describe('retranscribeSpan', () => {
       calls.push(args)
       return { stdout: '' }
     }
-    const readFile = (_p: string) => jsonOf([{ from: 5000, to: 8000, text: '복구' }])
+    const readFile = (): string => jsonOf([{ from: 5000, to: 8000, text: '복구' }])
     const segs = await retranscribeSpan({ ...baseDeps, run, readFile }, 5000, 20000)
     const args = calls[0]
     expect(args[args.indexOf('-mc') + 1]).toBe('0')
