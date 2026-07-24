@@ -1,13 +1,40 @@
 import { useMemo, useState } from 'react'
 import { formatStartTime, formatTimestamp } from '../../../shared/meeting-file'
 import { mergeParagraphs } from '../../../shared/transcript'
+import { meetingTypeDef } from '../../../shared/meeting-types'
+import type { MeetingSection } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
 
 // 사용량 한도 초과일 가능성이 있는 에러 메시지 패턴(Claude CLI가 남기는 문자열 기준) — 실버그
 // 대응(v0.4.0 ③b): 재생성 실패를 무반응으로 삼키지 않고 표면화한다.
 const LIMIT_ERROR_RE = /limit|usage/i
 
-export function MeetingDetail() {
+// 섹션 kind별 본문 렌더 — actions는 담당/기한 badge, list는 불릿, text는 문단.
+function SectionBody({ section }: { section: MeetingSection }): React.JSX.Element {
+  if (section.kind === 'actions') {
+    return section.items.length === 0
+      ? <p className="muted">항목이 없습니다.</p>
+      : (
+        <ul>
+          {section.items.map((a, i) => (
+            <li key={i}>
+              {a.text}
+              {a.assignee && <span className="badge">담당: {a.assignee}</span>}
+              {a.due && <span className="badge">기한: {a.due}</span>}
+            </li>
+          ))}
+        </ul>
+      )
+  }
+  if (section.kind === 'list') {
+    return section.items.length === 0
+      ? <p className="muted">항목이 없습니다.</p>
+      : <ul>{section.items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+  }
+  return section.text.trim() === '' ? <p className="muted">내용이 없습니다.</p> : <p>{section.text}</p>
+}
+
+export function MeetingDetail(): React.JSX.Element {
   const { meetings, selected, refresh } = useMeetings()
   const meeting = meetings.find((m) => m.filename === selected)
   const [regenerating, setRegenerating] = useState(false)
@@ -53,7 +80,8 @@ export function MeetingDetail() {
       <header className="detail-header">
         <h1>{meeting.title}</h1>
         <p className="date">
-          {meeting.date.slice(0, 10)} {formatStartTime(meeting.date)} · {meeting.durationMin}분
+          {meeting.date.slice(0, 10)} {formatStartTime(meeting.date)} · {meeting.durationMin}분 ·{' '}
+          {meetingTypeDef(meeting.meetingType).label}
         </p>
         {meeting.recorder && <p className="date">기록: {meeting.recorder}</p>}
         {meeting.participants.length > 0 && (
@@ -85,22 +113,12 @@ export function MeetingDetail() {
             </>
           )}
       </section>
-      <section>
-        <h2>액션아이템</h2>
-        {meeting.actionItems.length === 0
-          ? <p className="muted">액션아이템이 없습니다.</p>
-          : (
-            <ul>
-              {meeting.actionItems.map((a, i) => (
-                <li key={i}>
-                  {a.text}
-                  {a.assignee && <span className="badge">담당: {a.assignee}</span>}
-                  {a.due && <span className="badge">기한: {a.due}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-      </section>
+      {meeting.sections.map((s) => (
+        <section key={s.heading}>
+          <h2>{s.heading}</h2>
+          <SectionBody section={s} />
+        </section>
+      ))}
       <section>
         <h2>트랜스크립트</h2>
         <div className="transcript">

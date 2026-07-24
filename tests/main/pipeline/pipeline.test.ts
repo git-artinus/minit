@@ -9,7 +9,7 @@ function deps(over: Partial<Parameters<typeof runPipeline>[2]> = {}) {
   const statuses: PipelineStatus[] = []
   const d = {
     transcribe: vi.fn(async () => segments),
-    summarize: vi.fn(async () => ({ summary: '요약', actionItems: [] })),
+    summarize: vi.fn(async () => ({ summary: '요약', sections: [] })),
     save: vi.fn(async () => ({ filename: 'f.md', pushed: true })),
     onStatus: (s: PipelineStatus) => statuses.push(s),
     cleanupAudio: vi.fn(),
@@ -30,7 +30,7 @@ describe('runPipeline', () => {
     const { d, statuses } = deps({ summarize: vi.fn(async () => { throw new Error('claude 없음') }) })
     const result = await runPipeline('rec1', meta, d)
     expect(result).toHaveProperty('filename')
-    expect(d.save).toHaveBeenCalledWith(expect.objectContaining({ summary: '', actionItems: [] }))
+    expect(d.save).toHaveBeenCalledWith(expect.objectContaining({ summary: '', sections: [], meetingType: 'general' }))
     const done = statuses.at(-1)!
     expect(done.stage).toBe('done')
     expect(done.error).toEqual({ stage: 'summarizing', message: 'claude 없음' })

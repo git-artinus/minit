@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
-import type { Meeting } from '../shared/types'
+import { meetingTypeDef } from '../shared/meeting-types'
+import type { ActionItem, Meeting, MeetingSection } from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
   const d = new Date(dateIso)
@@ -14,25 +15,34 @@ export function escapeMrkdwn(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function actionItemLine(item: Meeting['actionItems'][number]): string {
+function actionItemLine(item: ActionItem): string {
   let line = `- [ ] ${escapeMrkdwn(item.text)}`
   if (item.assignee) line += ` (담당: ${escapeMrkdwn(item.assignee)})`
   if (item.due) line += ` (기한: ${escapeMrkdwn(item.due)})`
   return line
 }
 
+// 섹션 kind별 mrkdwn 렌더 — 빈 섹션은 통째로 생략한다(빈 헤딩만 남는 메시지 방지).
+function sectionLines(s: MeetingSection): string[] {
+  if (s.kind === 'actions') return s.items.length > 0 ? [`*${escapeMrkdwn(s.heading)}*`, ...s.items.map(actionItemLine)] : []
+  if (s.kind === 'list') return s.items.length > 0 ? [`*${escapeMrkdwn(s.heading)}*`, ...s.items.map((i) => `- ${escapeMrkdwn(i)}`)] : []
+  return s.text.trim() !== '' ? [`*${escapeMrkdwn(s.heading)}*`, escapeMrkdwn(s.text)] : []
+}
+
 function buildMeetingText(meeting: Meeting): string {
   const participants =
     meeting.participants.length > 0 ? meeting.participants.map(escapeMrkdwn).join(', ') : '참석자 없음'
+  const typeLabel = meetingTypeDef(meeting.meetingType).label
   const lines = [
-    `*${escapeMrkdwn(meeting.title)}*`,
+    `*${escapeMrkdwn(meeting.title)}* · ${escapeMrkdwn(typeLabel)}`,
     `${formatMeetingDate(meeting.date)} · ${participants}`,
     '',
     meeting.summary.trim() !== '' ? escapeMrkdwn(meeting.summary) : '전사만 저장됨'
   ]
 
-  if (meeting.actionItems.length > 0) {
-    lines.push('', '*액션아이템*', ...meeting.actionItems.map(actionItemLine))
+  for (const s of meeting.sections) {
+    const rendered = sectionLines(s)
+    if (rendered.length > 0) lines.push('', ...rendered)
   }
 
   return lines.join('\n')
@@ -179,4 +189,13 @@ export function notifySlackForMeeting(
   if (!channelId) return
   const token = loadToken()
   if (token) send(meeting, token, channelId)
+}
+
+// 회의별 채널 override(3-상태)를 설정 기본값과 합쳐 최종 발송 채널을 정한다.
+// undefined = override 안 함(기본값 사용) / null = 이번 회의 발송 안 함 / string = 이 채널로.
+export function resolveSlackChannelId(
+  override: string | null | undefined,
+  fallback: string | null
+): string | null {
+  return override !== undefined ? override : fallback
 }

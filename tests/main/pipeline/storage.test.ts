@@ -27,7 +27,7 @@ beforeEach(() => {
 
 const meeting = {
   title: '주간 스탠드업', date: '2026-07-20T10:30:00+09:00', durationMin: 32,
-  participants: ['조엘'], summary: '요약.', actionItems: [], segments: [{ startMs: 0, text: '안녕하세요.' }],
+  participants: ['조엘'], meetingType: 'general', summary: '요약.', sections: [], segments: [{ startMs: 0, text: '안녕하세요.' }],
 }
 
 describe('isGitRepo', () => {

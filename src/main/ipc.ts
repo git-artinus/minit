@@ -21,7 +21,8 @@ import {
   removeParticipant, renameParticipant, saveRoster, seedRosterIfMissing,
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
-import { listChannels, notifySlackForMeeting } from './slack'
+import { meetingTypeDef } from '../shared/meeting-types'
+import { listChannels, notifySlackForMeeting, resolveSlackChannelId } from './slack'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
 import { deleteToken as deleteGithubToken, loadToken as loadGithubToken, saveToken as saveGithubToken } from './github/token-store'
@@ -274,7 +275,11 @@ export function registerIpc(
       const result = await runPipeline(meta.recordingId, metaWithRecorder, {
         transcribe: () =>
           transcribe({ run, whisperPath, modelPath, wavPath, workDir: os.tmpdir(), readFile: (p) => fs.readFileSync(p, 'utf-8') }),
-        summarize: (segments) => summarize({ run: runWithStdin, title: meta.title, segments }),
+        summarize: (segments) =>
+          summarize({
+            run: runWithStdin, title: meta.title, segments,
+            participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
+          }),
         save: (meeting) => {
           captured.meeting = meeting
           return saveMeeting({
@@ -294,7 +299,11 @@ export function registerIpc(
         // sendSlackNotification 자체가 payload 생성 동기 예외·발송 비동기 실패를 모두 흡수하므로
         // 여기서 별도 try/catch가 필요 없다. 봇 토큰은 암호화 저장소에서만 로드한다(settings.json에는
         // 채널 ID/이름만 남는다). summary:regenerate 성공 후에도 동일 경로(notifySlackForMeeting)를 탄다.
-        notifySlackForMeeting(meeting, settings.slackChannelId, () => loadSlackToken(configDir, { fs, safeStorage }))
+        notifySlackForMeeting(
+          meeting,
+          resolveSlackChannelId(meta.slackChannelId, settings.slackChannelId),
+          () => loadSlackToken(configDir, { fs, safeStorage })
+        )
 
         // GitHub 업로드(로그인+레포 설정+자동 동기화 켜짐일 때만, 단방향 업로드) — syncMeeting도
         // 동일하게 절대 throw하지 않으며, 실패 시 onFailure로 pendingUploads에 쌓아 meetings:list에서
@@ -399,7 +408,11 @@ export function registerIpc(
     if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
     const updated = await regenerateSummary({
       repoRoot: settings.repoRoot, filename,
-      summarize: (segments, title) => summarize({ run: runWithStdin, title, segments }),
+      summarize: (meeting) =>
+        summarize({
+          run: runWithStdin, title: meeting.title, segments: meeting.segments,
+          participants: meeting.participants, typeDef: meetingTypeDef(meeting.meetingType),
+        }),
       git: systemGit(settings.repoRoot),
       autoSync: settings.autoPush,
     })

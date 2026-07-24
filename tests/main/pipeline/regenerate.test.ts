@@ -24,8 +24,8 @@ function seedRepo(): string {
   execFileSync('git', ['config', 'user.name', 't'], { cwd: repo })
   fs.mkdirSync(path.join(repo, 'meetings'))
   const raw = serializeMeeting({
-    title: '회의', date: '2026-07-20T10:00:00+09:00', durationMin: 10, participants: [],
-    summary: '', actionItems: [], segments: [{ startMs: 0, text: '안녕하세요.' }],
+    meetingType: 'general', title: '회의', date: '2026-07-20T10:00:00+09:00', durationMin: 10, participants: [],
+    summary: '', sections: [], segments: [{ startMs: 0, text: '안녕하세요.' }],
   })
   fs.writeFileSync(path.join(repo, 'meetings', 'a.md'), raw)
   execFileSync('git', ['add', '.'], { cwd: repo })
@@ -38,7 +38,10 @@ test('요약 없는 회의록에 요약을 채워 재커밋한다', async () => 
 
   const updated = await regenerateSummary({
     repoRoot: repo, filename: 'a.md',
-    summarize: async () => ({ summary: '새 요약', actionItems: [{ text: '할 일' }] }),
+    summarize: async () => ({
+      summary: '새 요약',
+      sections: [{ heading: '액션아이템', kind: 'actions' as const, items: [{ text: '할 일' }] }],
+    }),
     git: systemGit(repo),
     autoSync: true,
   })
@@ -56,7 +59,7 @@ test('autoSync=false: pull/push는 건너뛰고 로컬 add+commit만 수행한�
 
   await regenerateSummary({
     repoRoot: repo, filename: 'a.md',
-    summarize: async () => ({ summary: '새 요약', actionItems: [] }),
+    summarize: async () => ({ summary: '새 요약', sections: [] }),
     git,
     autoSync: false,
   })
@@ -71,15 +74,15 @@ test('git 레포가 아닌 폴더: git 호출 없이 파일만 갱신한다', as
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-regen-nongit-'))
   fs.mkdirSync(path.join(repo, 'meetings'))
   const raw = serializeMeeting({
-    title: '회의', date: '2026-07-20T10:00:00+09:00', durationMin: 10, participants: [],
-    summary: '', actionItems: [], segments: [{ startMs: 0, text: '안녕하세요.' }],
+    meetingType: 'general', title: '회의', date: '2026-07-20T10:00:00+09:00', durationMin: 10, participants: [],
+    summary: '', sections: [], segments: [{ startMs: 0, text: '안녕하세요.' }],
   })
   fs.writeFileSync(path.join(repo, 'meetings', 'a.md'), raw)
 
   const { git, calls } = recordingGit()
   const updated = await regenerateSummary({
     repoRoot: repo, filename: 'a.md',
-    summarize: async () => ({ summary: '새 요약', actionItems: [] }),
+    summarize: async () => ({ summary: '새 요약', sections: [] }),
     git,
     autoSync: true,
   })

@@ -5,22 +5,28 @@ import {
   listChannels,
   notifySlackForMeeting,
   postChatMessage,
+  resolveSlackChannelId,
   sendSlackNotification
 } from '../../src/main/slack'
-import type { Meeting } from '../../src/shared/types'
+import type { ActionItem, Meeting } from '../../src/shared/types'
 
 function meeting(over: Partial<Meeting> = {}): Meeting {
   return {
     filename: '2026-07-22-회의.md',
+    meetingType: 'general',
     title: '주간 회의',
     date: '2026-07-22T10:00:00+09:00',
     durationMin: 30,
     participants: ['철수', '영희'],
     summary: '이번 주 진행 상황을 공유했다.',
-    actionItems: [],
+    sections: [],
     segments: [],
     ...over
   }
+}
+
+function actionsSection(items: ActionItem[]): Meeting['sections'] {
+  return [{ heading: '액션아이템', kind: 'actions', items }]
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -64,10 +70,10 @@ describe('buildPostMessageBody', () => {
   test('액션아이템이 있으면 체크리스트(mrkdwn)로 넣는다', () => {
     const body = buildPostMessageBody(
       meeting({
-        actionItems: [
+        sections: actionsSection([
           { text: '문서 작성', assignee: '철수', due: '2026-07-25' },
           { text: '리뷰 요청' }
-        ]
+        ])
       }),
       '#회의록'
     )
@@ -76,9 +82,26 @@ describe('buildPostMessageBody', () => {
     expect(body.text).toContain('- [ ] 리뷰 요청')
   })
 
-  test('액션아이템이 없으면 액션아이템 섹션을 생략한다', () => {
-    const body = buildPostMessageBody(meeting({ actionItems: [] }), '#회의록')
+  test('액션아이템이 비어 있으면 액션아이템 섹션을 생략한다', () => {
+    const body = buildPostMessageBody(meeting({ sections: actionsSection([]) }), '#회의록')
     expect(body.text).not.toContain('액션아이템')
+  })
+
+  test('타입 label을 헤드라인에 병기하고, list 섹션을 불릿으로 넣는다', () => {
+    const body = buildPostMessageBody(
+      meeting({
+        meetingType: 'daily',
+        sections: [
+          { heading: '진척', kind: 'list', items: ['A 완료'] },
+          { heading: '블로커', kind: 'list', items: [] }
+        ]
+      }),
+      '#회의록'
+    )
+    expect(body.text).toContain('*주간 회의* · 데일리')
+    expect(body.text).toContain('*진척*')
+    expect(body.text).toContain('- A 완료')
+    expect(body.text).not.toContain('블로커') // 빈 섹션 생략
   })
 
   test('사용자 유래 텍스트(제목·요약·참석자·액션아이템)에 mrkdwn 이스케이프를 적용한다', () => {
@@ -87,7 +110,7 @@ describe('buildPostMessageBody', () => {
         title: 'R&D <기획>',
         participants: ['A&B', '<C>'],
         summary: '<script> & 위험',
-        actionItems: [{ text: 'R&D <검토>', assignee: '<팀장>', due: '<2026-08-01>' }]
+        sections: actionsSection([{ text: 'R&D <검토>', assignee: '<팀장>', due: '<2026-08-01>' }])
       }),
       '#회의록'
     )
@@ -393,5 +416,20 @@ describe('notifySlackForMeeting', () => {
     notifySlackForMeeting(m, channel, loadToken, send)
 
     expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel)
+  })
+})
+
+describe('resolveSlackChannelId', () => {
+  test('override 미지정(undefined)이면 설정 기본값을 사용한다', () => {
+    expect(resolveSlackChannelId(undefined, 'C_DEFAULT')).toBe('C_DEFAULT')
+  })
+  test('override가 채널 id면 그 채널로 재정의한다', () => {
+    expect(resolveSlackChannelId('C_OVERRIDE', 'C_DEFAULT')).toBe('C_OVERRIDE')
+  })
+  test('override가 null이면 발송하지 않는다(null 반환)', () => {
+    expect(resolveSlackChannelId(null, 'C_DEFAULT')).toBeNull()
+  })
+  test('override 미지정이고 기본값도 없으면 null', () => {
+    expect(resolveSlackChannelId(undefined, null)).toBeNull()
   })
 })
