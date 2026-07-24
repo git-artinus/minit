@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { MeetingMeta, Roster, SlackChannel, AppSettings, SlackTokenState } from '../../../shared/types'
 import { defaultMeetingTitle, localIsoNow } from '../../../shared/meeting-file'
 import { resolveMemberName } from '../../../shared/roster'
+import { DEFAULT_MEETING_TYPE, MEETING_TYPES } from '../../../shared/meeting-types'
 import { SlackChannelSelect } from './SlackChannelSelect'
 import {
   CHANNEL_DEFAULT,
@@ -21,6 +22,8 @@ export function StartMeetingModal(props: {
   // undefined = 로딩 중, null = 명단 파일 없음(자유입력 폴백)
   const [roster, setRoster] = useState<Roster | null | undefined>(undefined)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const [meetingType, setMeetingType] = useState(DEFAULT_MEETING_TYPE)
 
   // Slack 채널 override(#2) — undefined=설정 기본값 사용 / null=발송 안 함 / string=이 채널로.
   const [channelOverride, setChannelOverride] = useState<string | null | undefined>(undefined)
@@ -122,7 +125,8 @@ export function StartMeetingModal(props: {
       date: localIsoNow(now),
       durationMin: 0, // 종료 시 갱신
       participants: finalParticipants,
-      slackChannelId: channelOverride
+      slackChannelId: channelOverride,
+      meetingType
     })
     // 자동 등록(v0.4.0 ③a) — 로스터에 없는 이름을 등록한다. 실패해도 회의 시작 자체는
     // 이미 onStart로 진행되었으므로 격리한다(회귀 없이 조용히 무시).
@@ -184,6 +188,14 @@ export function StartMeetingModal(props: {
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
+        <div className="chip-group">
+          <div className="chip-group-label">회의 유형</div>
+          <select value={meetingType} onChange={(e) => setMeetingType(e.target.value)}>
+            {MEETING_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+        </div>
         {hasRoster ? (
           <>
             <div className="chip-group">
