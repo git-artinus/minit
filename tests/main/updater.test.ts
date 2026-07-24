@@ -96,6 +96,28 @@ test('downloadAndInstall: download-progress를 onProgress로 전달하고, updat
   expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
 })
 
+// 트레이 앱 종료 가드 해제(v0.5.1 버그픽스) — quitAndInstall이 창을 닫을 때 main의 close 핸들러가
+// appQuitting=false면 종료 대신 hide해 설치가 행에 걸린다. onBeforeInstall로 quitAndInstall 직전에
+// appQuitting=true를 세워 실제 종료→Squirrel 설치·재실행이 진행되게 한다. 순서(before→quit)가 핵심.
+test('downloadAndInstall: update-downloaded 시 onBeforeInstall을 quitAndInstall보다 먼저 호출한다', async () => {
+  const autoUpdater = fakeAutoUpdater()
+  const order: string[] = []
+  ;(autoUpdater.quitAndInstall as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    order.push('quit')
+  })
+  const updater = createUpdater({
+    autoUpdater,
+    isPackaged: () => true,
+    onBeforeInstall: () => order.push('before')
+  })
+
+  const promise = updater.downloadAndInstall()
+  autoUpdater.emit('update-downloaded', {})
+  await promise
+
+  expect(order).toEqual(['before', 'quit'])
+})
+
 test('downloadAndInstall: error 이벤트가 오면 reject하고 quitAndInstall을 호출하지 않는다', async () => {
   const autoUpdater = fakeAutoUpdater()
   const updater = createUpdater({ autoUpdater, isPackaged: () => true })

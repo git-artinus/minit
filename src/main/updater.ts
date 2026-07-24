@@ -28,6 +28,10 @@ export interface UpdaterDeps {
   // dev(app.isPackaged=false)에서는 electron-updater가 latest-mac.yml 등 배포 메타를 찾지 못해
   // 동작하지 않는다 — 패키징된 앱에서만 실제 체크를 시도한다.
   isPackaged: () => boolean
+  // quitAndInstall 직전 훅 — 트레이 상주 앱은 창 close 시 appQuitting=false면 종료 대신 hide한다.
+  // quitAndInstall이 이 가드를 못 풀면 창만 사라지고 설치가 행에 걸리므로, 직전에 appQuitting=true를
+  // 세워 실제 종료→Squirrel 설치·재실행이 진행되게 한다(index.ts가 주입).
+  onBeforeInstall?: () => void
 }
 
 export interface Updater {
@@ -77,7 +81,7 @@ export function canInstallUpdate(state: { isRecording: boolean; runningPipelineC
 }
 
 export function createUpdater(deps: UpdaterDeps): Updater {
-  const { autoUpdater, isPackaged } = deps
+  const { autoUpdater, isPackaged, onBeforeInstall } = deps
   // 수동(설정 버튼) 확인 후 사용자가 명시적으로 [업데이트]를 눌러야 다운로드·설치가 시작되도록
   // 강제한다 — 백그라운드 자동 다운로드/자동 설치는 오너 확정 UX(팝업 → 버튼 → 적용)와 어긋난다.
   autoUpdater.autoDownload = false
@@ -122,6 +126,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
       const onProgressEvt = (progress: UpdateProgress): void => onProgress?.(progress)
       const onDownloaded = (): void => {
         cleanup()
+        onBeforeInstall?.()
         autoUpdater.quitAndInstall()
         resolve()
       }

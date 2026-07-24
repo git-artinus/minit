@@ -8,7 +8,7 @@
 <p align="center">로컬에서 동작하는 온디바이스 회의록 앱 - 녹음을 자동으로 전사하고 요약합니다</p>
 
 <p align="center">
-  <img alt="release" src="https://img.shields.io/badge/release-v0.5.0-FF6B35">
+  <img alt="release" src="https://img.shields.io/badge/release-v0.5.1-FF6B35">
   <img alt="platform" src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-0A84FF">
   <img alt="electron" src="https://img.shields.io/badge/electron-39-47848F">
   <img alt="license" src="https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey">
