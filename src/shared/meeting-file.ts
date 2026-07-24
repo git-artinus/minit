@@ -89,6 +89,7 @@ export function serializeMeeting(m: Omit<Meeting, 'filename'>): string {
     duration: `${m.durationMin}m`,
     type: m.meetingType,
     participants: m.participants,
+    ...(m.transcriptFlagged ? { transcriptFlagged: true } : {}),
   }).trim()
   const summary = `## 요약\n\n${m.summary}`.trimEnd()
   const sections = m.sections.map(serializeSection).join('\n\n')
@@ -122,6 +123,7 @@ export function parseMeeting(filename: string, raw: string): Meeting {
     summary: find('요약').join('\n').trim(),
     sections,
     segments,
+    ...(data.transcriptFlagged === true ? { transcriptFlagged: true as const } : {}),
   }
 }
 

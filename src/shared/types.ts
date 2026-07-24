@@ -22,6 +22,8 @@ export interface Meeting extends MeetingMeta {
   summary: string
   sections: MeetingSection[]
   segments: TranscriptSegment[]
+  // 재전사 후에도 반복이 남아 일부 구간이 신뢰 불가일 수 있음(뷰어 경고 표시용).
+  transcriptFlagged?: boolean
   pendingPush?: boolean  // push 실패 상태 표시용 (storage가 설정)
 }
 export type PipelineStage = 'transcribing' | 'summarizing' | 'saving' | 'done'
