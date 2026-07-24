@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 import { transcribeRaw, retranscribeSpan, repairTranscript } from '../../../src/main/pipeline/transcriber'
+import type { RunCommand } from '../../../src/main/pipeline/transcriber'
 import type { MergeableSegment } from '../../../src/shared/transcript'
 
 const baseDeps = {
@@ -12,10 +13,14 @@ function jsonOf(segs: { from: number; to: number; text: string }[]): string {
 
 describe('transcribeRaw', () => {
   test('최초 전사에 -mc 64를 적용하고 원본 세그먼트를 반환한다', async () => {
-    const run = vi.fn(async () => ({ stdout: '' }))
-    const readFile = vi.fn(() => jsonOf([{ from: 0, to: 2000, text: '발화' }]))
+    const calls: string[][] = []
+    const run: RunCommand = async (_cmd, args) => {
+      calls.push(args)
+      return { stdout: '' }
+    }
+    const readFile = (_p: string) => jsonOf([{ from: 0, to: 2000, text: '발화' }])
     const segs = await transcribeRaw({ ...baseDeps, run, readFile })
-    const args = run.mock.calls[0][1] as string[]
+    const args = calls[0]
     expect(args).toContain('-mc')
     expect(args[args.indexOf('-mc') + 1]).toBe('64')
     expect(segs).toEqual([{ startMs: 0, endMs: 2000, text: '발화' }])
@@ -24,10 +29,14 @@ describe('transcribeRaw', () => {
 
 describe('retranscribeSpan', () => {
   test('-mc 0 + -ot + -d 로 구간만 재전사한다', async () => {
-    const run = vi.fn(async () => ({ stdout: '' }))
-    const readFile = vi.fn(() => jsonOf([{ from: 5000, to: 8000, text: '복구' }]))
+    const calls: string[][] = []
+    const run: RunCommand = async (_cmd, args) => {
+      calls.push(args)
+      return { stdout: '' }
+    }
+    const readFile = (_p: string) => jsonOf([{ from: 5000, to: 8000, text: '복구' }])
     const segs = await retranscribeSpan({ ...baseDeps, run, readFile }, 5000, 20000)
-    const args = run.mock.calls[0][1] as string[]
+    const args = calls[0]
     expect(args[args.indexOf('-mc') + 1]).toBe('0')
     expect(args[args.indexOf('-ot') + 1]).toBe('5000')
     expect(args[args.indexOf('-d') + 1]).toBe('15000')
@@ -61,5 +70,30 @@ describe('repairTranscript', () => {
     const retranscribe = vi.fn(async () => repeated.slice(1)) // 여전히 반복
     const out = await repairTranscript(repeated, retranscribe)
     expect(out.flagged).toBe(true)
+  })
+
+  test('서로 떨어진 두 반복 구간을 모두 재전사·스플라이스한다', async () => {
+    const twoSpans: MergeableSegment[] = [
+      { startMs: 0, endMs: 3000, text: '정상1' },
+      ...Array.from({ length: 8 }, (_, i) => ({ startMs: 3000 + i * 10000, endMs: 13000 + i * 10000, text: '반복문구1.' })),
+      { startMs: 83000, endMs: 86000, text: '정상2' },
+      ...Array.from({ length: 8 }, (_, i) => ({ startMs: 86000 + i * 10000, endMs: 96000 + i * 10000, text: '반복문구2.' })),
+      { startMs: 166000, endMs: 169000, text: '정상3' },
+    ]
+
+    const retranscribe = vi.fn(async (startMs: number) =>
+      startMs === 3000
+        ? [{ startMs: 3000, endMs: 83000, text: '복구된 발화1' }]
+        : [{ startMs: 86000, endMs: 166000, text: '복구된 발화2' }],
+    )
+
+    const out = await repairTranscript(twoSpans, retranscribe)
+
+    expect(retranscribe).toHaveBeenCalledTimes(2)
+    expect(out.flagged).toBe(false)
+    expect(out.segments.map((s) => s.text)).toContain('복구된 발화1')
+    expect(out.segments.map((s) => s.text)).toContain('복구된 발화2')
+    expect(out.segments.some((s) => s.text === '반복문구1.')).toBe(false)
+    expect(out.segments.some((s) => s.text === '반복문구2.')).toBe(false)
   })
 })
