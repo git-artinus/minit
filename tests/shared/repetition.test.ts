@@ -52,6 +52,29 @@ describe('detectRepetitions', () => {
     expect(spans).toHaveLength(1)
     expect(spans[0].endMs).toBe(70_000) // 마지막 세그먼트 startMs
   })
+
+  test('count가 정확히 MIN_REPEAT_COUNT(6)이면 탐지, 5면 탐지하지 않는다(duration은 양쪽 다 충분)', () => {
+    // stepMs=15_000 → count=6일 때 duration 90_000, count=5일 때 duration 75_000. 둘 다 60_000 이상이라
+    // duration 문턱과 무관하게 count 문턱만으로 갈린다.
+    const detected = detectRepetitions(run('경계반복.', 0, 6, 15_000))
+    expect(detected).toHaveLength(1)
+    expect(detected[0].count).toBe(6)
+
+    const notDetected = detectRepetitions(run('경계반복.', 0, 5, 15_000))
+    expect(notDetected).toEqual([])
+  })
+
+  test('duration이 정확히 MIN_SPAN_MS(60_000)이면 탐지한다(경계 포함, >=)', () => {
+    const spans = detectRepetitions(run('경계지속시간.', 0, 6, 10_000))
+    expect(spans).toHaveLength(1)
+    expect(spans[0].endMs - spans[0].startMs).toBe(60_000)
+  })
+
+  test('공백·구두점만 있는 텍스트가 길게 반복돼도 잡지 않는다(침묵을 반복으로 오탐하지 않음)', () => {
+    expect(detectRepetitions(run('   ', 0, 8))).toEqual([])
+    expect(detectRepetitions(run('...', 0, 8))).toEqual([])
+    expect(detectRepetitions(run('', 0, 8))).toEqual([])
+  })
 })
 
 describe('spliceSegments', () => {
@@ -65,5 +88,17 @@ describe('spliceSegments', () => {
     const replacement = [{ startMs: 5_000, endMs: 20_000, text: '복구된 실제 발화' }]
     const out = spliceSegments(segs, span, replacement)
     expect(out.map((s) => s.text)).toEqual(['앞', '복구된 실제 발화', '뒤'])
+  })
+
+  test('다음 세그먼트의 startMs가 span.endMs와 정확히 같아도 유실되지 않는다(경계 회귀 테스트)', () => {
+    const segs = [
+      { startMs: 0, endMs: 5_000, text: '앞' },
+      ...run('반복문구.', 5_000, 3), // 5_000~35_000, 마지막 세그먼트 endMs === 35_000
+      { startMs: 35_000, endMs: 40_000, text: '이어지는 실제 발화' }, // startMs === span.endMs
+    ]
+    const span = { startMs: 5_000, endMs: 35_000 }
+    const replacement = [{ startMs: 5_000, endMs: 20_000, text: '복구된 실제 발화' }]
+    const out = spliceSegments(segs, span, replacement)
+    expect(out.map((s) => s.text)).toEqual(['앞', '복구된 실제 발화', '이어지는 실제 발화'])
   })
 })

@@ -47,6 +47,10 @@ export function spliceSegments(
   span: { startMs: number; endMs: number },
   replacement: MergeableSegment[],
 ): MergeableSegment[] {
-  const kept = segments.filter((s) => s.startMs < span.startMs || s.startMs > span.endMs)
+  // span.endMs는 반복 구간 마지막 세그먼트의 endMs이므로, startMs가 정확히 span.endMs와
+  // 같은 다음 실제 세그먼트는 반복 구간이 아니라 그 바로 뒤에 이어지는 세그먼트다.
+  // 경계를 포함(>=)해 제거해야 반복 세그먼트는 모두 걸러지고(자기 endMs보다 항상 이르므로),
+  // 뒤이어 붙은 세그먼트는 유실 없이 남는다.
+  const kept = segments.filter((s) => s.startMs < span.startMs || s.startMs >= span.endMs)
   return [...kept, ...replacement].sort((a, b) => a.startMs - b.startMs)
 }
