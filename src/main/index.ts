@@ -84,7 +84,14 @@ app.whenReady().then(async () => {
       app.quit()
     }
   })
-  registerIpc(mainWindow, { onRecordingState: (r) => tray.setRecording(r) })
+  registerIpc(mainWindow, {
+    onRecordingState: (r) => tray.setRecording(r),
+    // 자동 업데이트 설치 직전 종료 가드 해제 — quitAndInstall이 창을 닫을 때 실제 종료가 되도록
+    // appQuitting을 세운다(안 하면 창이 트레이로 hide되어 설치가 행에 걸림).
+    onBeforeInstall: () => {
+      appQuitting = true
+    }
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

@@ -64,7 +64,10 @@ const runWithStdin = (cmd: string, args: string[], stdin: string) =>
 
 const GITHUB_REPO_RE = /^[\w.-]+\/[\w.-]+$/
 
-export function registerIpc(win: BrowserWindow, opts: { onRecordingState: (r: boolean) => void }): void {
+export function registerIpc(
+  win: BrowserWindow,
+  opts: { onRecordingState: (r: boolean) => void; onBeforeInstall?: () => void }
+): void {
   const userData = app.getPath('userData')
   const configDir = minitHome()
   // 레거시 설정 파일 위치 이전(userData → ~/.minit) → 레거시 평문 Slack 토큰 암호화 이관 →
@@ -476,7 +479,11 @@ export function registerIpc(win: BrowserWindow, opts: { onRecordingState: (r: bo
   // ── 자동 업데이트(v0.4.0 ③b) ────────────────────────────────────────────
   // GitHub Releases(public 전환 예정)를 인증 없는 업데이트 피드로 쓴다. 오너 확정 UX: 팝업 알림 →
   // [업데이트] 클릭 → 적용(자동 다운로드·자동 설치는 하지 않는다 — createUpdater가 강제).
-  const updater = createUpdater({ autoUpdater: autoUpdater as unknown as AutoUpdaterLike, isPackaged: () => app.isPackaged })
+  const updater = createUpdater({
+    autoUpdater: autoUpdater as unknown as AutoUpdaterLike,
+    isPackaged: () => app.isPackaged,
+    onBeforeInstall: opts.onBeforeInstall
+  })
 
   // 저장소 비공개 상태 업데이트 안내(v0.4.1) — 레포가 public으로 전환되기 전에는 업데이트
   // 피드(GitHub Releases) 조회가 404/HttpError 등으로 실패한다. 이를 classifyUpdateError로
