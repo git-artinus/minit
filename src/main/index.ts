@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { ensureShellPath } from './shell-path'
 import { createTray } from './tray'
+import { sweepArchive, ARCHIVE_TTL_MS } from './audio-archive'
 
 let appQuitting = false
 
@@ -57,6 +58,9 @@ app.whenReady().then(async () => {
   // GUI 앱은 launchd의 최소 PATH를 물려받아 로그인 셸에만 있는 claude·git을 못 찾을 수 있다.
   // registerIpc/createWindow보다 먼저 로그인 셸 PATH를 병합해야 이후의 execFile 호출이 안전하다.
   await ensureShellPath()
+
+  // 저장 후 보존된 녹음 원본(webm)을 TTL 경과분만 정리한다(재현 코퍼스·후속 복구용).
+  sweepArchive(join(app.getPath('userData'), 'audio-archive'), ARCHIVE_TTL_MS, Date.now())
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('dev.artinus.minit')

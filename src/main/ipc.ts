@@ -9,6 +9,7 @@ import { checkEnv, modelFilePath, resolveWhisperCli, systemCommandExists } from 
 import { downloadModel, modelUrl } from './model-download'
 import { canInstallUpdate, classifyUpdateError, createUpdater, type AutoUpdaterLike } from './updater'
 import * as sink from './recording-sink'
+import { archiveRecording } from './audio-archive'
 import { minitHome, saveSettings } from './settings'
 import { initializeSettings } from './settings-init'
 import { runPipeline } from './pipeline/pipeline'
@@ -138,6 +139,7 @@ export function registerIpc(
   })
   const modelPath = modelFilePath(userData, settings.modelName)
   const recordingsDir = path.join(userData, 'recordings')
+  const archiveDir = path.join(userData, 'audio-archive')
   // appRoot=번들 리소스(whisper-cli) 탐색 기준, settings.repoRoot=회의록 저장 git 레포 — 별개 개념.
   // dev에서는 app.getAppPath()가 프로젝트 루트를 반환하며, 사용자가 settings.json으로 바꿀 수 없다.
   const appRoot = app.isPackaged ? process.resourcesPath : app.getAppPath()
@@ -299,7 +301,7 @@ export function registerIpc(
         onStatus: (s) => {
           if (!win.isDestroyed()) win.webContents.send('pipeline:status', s)
         },
-        cleanupAudio: () => sink.removeRecording(recordingsDir, meta.recordingId),
+        cleanupAudio: () => archiveRecording(recordingsDir, archiveDir, meta.recordingId),
       })
 
       if ('filename' in result && captured.meeting) {
