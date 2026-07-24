@@ -15,6 +15,10 @@ minit은 오픈소스로 개발되며, 이슈 상태가 저장소만 봐도 최�
 
 > 참고: 이 규칙은 auto-close 키워드를 금지하는 외부 공통 컨벤션이 있더라도 이 레포 안에서는 이 문서가 우선한다.
 
+## 릴리즈 노트
+
+- GitHub Release 본문은 [.github/RELEASE_TEMPLATE.md](.github/RELEASE_TEMPLATE.md) 서식을 따른다.
+
 ## 그 외 규칙
 
 - 커밋 메시지·PR·리뷰는 한국어, Conventional Commits(`feat:`/`fix:`/…)를 따른다.
