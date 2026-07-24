@@ -1,26 +1,51 @@
 import { formatTimestamp } from '../../shared/meeting-file'
-import type { ActionItem, TranscriptSegment } from '../../shared/types'
+import type { ActionItem, MeetingSection, TranscriptSegment } from '../../shared/types'
+import type { MeetingTypeDef } from '../../shared/meeting-types'
 
-export interface SummaryResult { summary: string; actionItems: ActionItem[] }
+export interface SummaryResult { summary: string; sections: MeetingSection[] }
 export type RunWithStdin = (cmd: string, args: string[], stdin: string) => Promise<{ stdout: string }>
 
-export function buildPrompt(title: string): string {
+export function buildPrompt(typeDef: MeetingTypeDef, title: string, participants: string[]): string {
+  const sectionKeys = typeDef.sectionDefs.map((d) => `"${d.heading}"`).join(', ')
+  const sectionsSchema =
+    typeDef.sectionDefs.length > 0
+      ? `"sections": {${typeDef.sectionDefs
+          .map((d) =>
+            d.kind === 'actions'
+              ? `"${d.heading}": [{"text": "할 일", "assignee": "담당자(언급된 경우만)", "due": "기한(언급된 경우만)"}]`
+              : d.kind === 'list'
+                ? `"${d.heading}": ["항목", "..."]`
+                : `"${d.heading}": "서술"`
+          )
+          .join(', ')}}`
+      : `"sections": {}`
+  const roster =
+    participants.length > 0
+      ? `참석자 명단: ${participants.join(', ')}. 트랜스크립트는 음성 인식 결과라 사람 이름이 오인식됐을 수 있다. 명백히 오인식된 이름만 이 명단의 표기로 교정하고, 불확실하면 원문을 유지하라. 명단에 없는 이름을 지어내지 마라.`
+      : ''
   return [
     `다음은 "${title}" 회의의 타임라인 트랜스크립트다.`,
+    typeDef.promptGuidance,
+    roster,
     '아래 JSON 스키마로만 응답하라. 다른 텍스트를 붙이지 마라.',
-    '{"summary": "회의 핵심 논의·결정 사항을 3~6문장의 한국어로 요약",',
-    ' "actionItems": [{"text": "할 일", "assignee": "담당자(언급된 경우만)", "due": "기한(언급된 경우만)"}]}',
-    '액션아이템이 없으면 빈 배열로 응답하라. 트랜스크립트에 없는 내용을 지어내지 마라.',
-  ].join('\n')
+    `{"summary": "회의 핵심을 3~6문장의 한국어로 요약", ${sectionsSchema}}`,
+    typeDef.sectionDefs.length > 0
+      ? `sections의 키는 정확히 [${sectionKeys}]로 하라. 해당 내용이 없으면 빈 배열로 두라.`
+      : '',
+    '트랜스크립트에 없는 내용을 지어내지 마라.',
+  ]
+    .filter((l) => l !== '')
+    .join('\n')
 }
 
-function isValidShape(value: unknown): value is Partial<SummaryResult> {
+interface RawOutput { summary: string; sections?: Record<string, unknown> }
+
+function isValidShape(value: unknown): value is RawOutput {
   if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Partial<SummaryResult>
-  return typeof candidate.summary === 'string' && Array.isArray(candidate.actionItems)
+  return typeof (value as Partial<RawOutput>).summary === 'string'
 }
 
-function tryParse(candidate: string): Partial<SummaryResult> | null {
+function tryParse(candidate: string): RawOutput | null {
   try {
     const parsed: unknown = JSON.parse(candidate)
     return isValidShape(parsed) ? parsed : null
@@ -59,9 +84,14 @@ function findBalancedJsonCandidates(text: string): string[] {
   return candidates
 }
 
+// LLM 출력이 스키마와 어긋나도 최대한 수용한다 — 문자열 원소는 text만 있는 액션아이템으로 취급.
 function sanitizeActionItems(items: unknown[]): ActionItem[] {
   const result: ActionItem[] = []
   for (const item of items) {
+    if (typeof item === 'string') {
+      if (item.trim().length > 0) result.push({ text: item.trim() })
+      continue
+    }
     if (typeof item !== 'object' || item === null) continue
     const record = item as Record<string, unknown>
     if (typeof record.text !== 'string' || record.text.length === 0) continue
@@ -73,28 +103,49 @@ function sanitizeActionItems(items: unknown[]): ActionItem[] {
   return result
 }
 
-export function parseClaudeOutput(stdout: string): SummaryResult {
+export function parseClaudeOutput(stdout: string, typeDef: MeetingTypeDef): SummaryResult {
   const fenceMatch = stdout.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
-  const parsed = (fenceMatch ? tryParse(fenceMatch[1].trim()) : null)
-    ?? findBalancedJsonCandidates(stdout).reduce<Partial<SummaryResult> | null>(
+  const parsed =
+    (fenceMatch ? tryParse(fenceMatch[1].trim()) : null) ??
+    findBalancedJsonCandidates(stdout).reduce<RawOutput | null>(
       (found, candidate) => found ?? tryParse(candidate),
-      null,
+      null
     )
   if (!parsed) throw new Error('claude 응답에서 JSON을 찾지 못했다')
-  if (typeof parsed.summary !== 'string' || !Array.isArray(parsed.actionItems)) {
-    throw new Error('claude 응답 JSON이 스키마와 다르다')
-  }
-  return { summary: parsed.summary, actionItems: sanitizeActionItems(parsed.actionItems) }
+  // 섹션 kind는 LLM 출력이 아니라 타입 정의에서 온다 — 키 누락·형식 이탈에도 구조가 무너지지 않는다.
+  const raw: Record<string, unknown> =
+    typeof parsed.sections === 'object' && parsed.sections !== null ? parsed.sections : {}
+  const sections: MeetingSection[] = typeDef.sectionDefs.map((def) => {
+    const v = raw[def.heading]
+    if (def.kind === 'actions') {
+      return { heading: def.heading, kind: 'actions', items: sanitizeActionItems(Array.isArray(v) ? v : []) }
+    }
+    if (def.kind === 'list') {
+      return {
+        heading: def.heading,
+        kind: 'list',
+        items: Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [],
+      }
+    }
+    return { heading: def.heading, kind: 'text', text: typeof v === 'string' ? v : '' }
+  })
+  return { summary: parsed.summary, sections }
 }
 
 export async function summarize(deps: {
   run: RunWithStdin
   title: string
   segments: TranscriptSegment[]
+  participants: string[]
+  typeDef: MeetingTypeDef
 }): Promise<SummaryResult> {
   const transcript = deps.segments
     .map((s) => `${formatTimestamp(s.startMs)} ${s.text}`)
     .join('\n')
-  const { stdout } = await deps.run('claude', ['-p', buildPrompt(deps.title)], transcript)
-  return parseClaudeOutput(stdout)
+  const { stdout } = await deps.run(
+    'claude',
+    ['-p', buildPrompt(deps.typeDef, deps.title, deps.participants)],
+    transcript
+  )
+  return parseClaudeOutput(stdout, deps.typeDef)
 }

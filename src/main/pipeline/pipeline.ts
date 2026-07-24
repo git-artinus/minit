@@ -1,6 +1,7 @@
 import type {
   Meeting, MeetingMeta, PipelineStatus, TranscriptSegment,
 } from '../../shared/types'
+import { DEFAULT_MEETING_TYPE } from '../../shared/meeting-types'
 import type { SaveResult } from './storage'
 import type { SummaryResult } from './summarizer'
 
@@ -29,7 +30,7 @@ export async function runPipeline(
 
   emit({ stage: 'summarizing' })
   let summaryError: PipelineStatus['error']
-  let summary: SummaryResult = { summary: '', actionItems: [] }
+  let summary: SummaryResult = { summary: '', sections: [] }
   try {
     summary = await deps.summarize(segments)
   } catch (e) {
@@ -39,7 +40,8 @@ export async function runPipeline(
   emit({ stage: 'saving', error: summaryError })
   let saved: SaveResult
   try {
-    saved = await deps.save({ ...meta, ...summary, segments })
+    // Meeting이 실체화되는 지점 — 시작 모달이 타입을 안 실어도(구버전 렌더러·트레이 시작) general로 확정한다.
+    saved = await deps.save({ ...meta, meetingType: meta.meetingType ?? DEFAULT_MEETING_TYPE, ...summary, segments })
   } catch (e) {
     // 저장 실패 — 오디오는 이미 남아 있으므로(cleanupAudio 미호출) 재시도를 위해 보관된다
     emit({ stage: 'saving', error: { stage: 'saving', message: message(e) } })

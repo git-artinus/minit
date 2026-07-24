@@ -21,6 +21,7 @@ import {
   removeParticipant, renameParticipant, saveRoster, seedRosterIfMissing,
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
+import { meetingTypeDef } from '../shared/meeting-types'
 import { listChannels, notifySlackForMeeting, resolveSlackChannelId } from './slack'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
@@ -274,7 +275,11 @@ export function registerIpc(
       const result = await runPipeline(meta.recordingId, metaWithRecorder, {
         transcribe: () =>
           transcribe({ run, whisperPath, modelPath, wavPath, workDir: os.tmpdir(), readFile: (p) => fs.readFileSync(p, 'utf-8') }),
-        summarize: (segments) => summarize({ run: runWithStdin, title: meta.title, segments }),
+        summarize: (segments) =>
+          summarize({
+            run: runWithStdin, title: meta.title, segments,
+            participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
+          }),
         save: (meeting) => {
           captured.meeting = meeting
           return saveMeeting({
@@ -403,7 +408,11 @@ export function registerIpc(
     if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
     const updated = await regenerateSummary({
       repoRoot: settings.repoRoot, filename,
-      summarize: (segments, title) => summarize({ run: runWithStdin, title, segments }),
+      summarize: (meeting) =>
+        summarize({
+          run: runWithStdin, title: meeting.title, segments: meeting.segments,
+          participants: meeting.participants, typeDef: meetingTypeDef(meeting.meetingType),
+        }),
       git: systemGit(settings.repoRoot),
       autoSync: settings.autoPush,
     })

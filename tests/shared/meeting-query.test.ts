@@ -5,7 +5,7 @@ import type { Meeting } from '../../src/shared/types'
 function m(over: Partial<Meeting>): Meeting {
   return {
     filename: 'f.md', title: '회의', date: '2026-07-20T10:00:00+09:00',
-    durationMin: 30, participants: [], summary: '', actionItems: [], segments: [],
+    durationMin: 30, participants: [], meetingType: 'general', summary: '', sections: [], segments: [],
     ...over,
   }
 }
