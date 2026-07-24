@@ -12,7 +12,7 @@ import * as sink from './recording-sink'
 import { minitHome, saveSettings } from './settings'
 import { initializeSettings } from './settings-init'
 import { runPipeline } from './pipeline/pipeline'
-import { transcribe } from './pipeline/transcriber'
+import { transcribeAndRepair } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
 import { isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
 import { regenerateSummary } from './pipeline/regenerate'
@@ -267,23 +267,32 @@ export function registerIpc(
       // 별개로 자체 핸들러에서 notifySlackForMeeting을 호출해 발송한다(v0.4.2 — 요약이 새로 생기는
       // 흐름 커버, 재생성 시 재발송은 의도된 동작). (객체 프로퍼티로 감싼 이유: let 변수를 콜백 안에서
       // 재할당하면 TS의 흐름 분석이 초기값 null로 과협소화해 이후 narrowing이 깨진다.)
-      const captured: { meeting: Omit<Meeting, 'filename'> | null } = { meeting: null }
+      const captured: { meeting: Omit<Meeting, 'filename'> | null; transcriptFlagged: boolean } = {
+        meeting: null, transcriptFlagged: false,
+      }
       // 기록자 주입(v0.4.0 ③b) — 로그인 상태(cachedGithubLogin 있음)일 때만 채운다. 여기서
       // fetchViewer를 새로 호출하지 않고 캐시만 읽는다(위 워밍업·github:loginState·로그인 성공
       // 이벤트가 갱신한 값).
       const metaWithRecorder = cachedGithubLogin ? { ...meta, recorder: cachedGithubLogin } : meta
       const result = await runPipeline(meta.recordingId, metaWithRecorder, {
-        transcribe: () =>
-          transcribe({ run, whisperPath, modelPath, wavPath, workDir: os.tmpdir(), readFile: (p) => fs.readFileSync(p, 'utf-8') }),
+        transcribe: async () => {
+          const { segments, flagged } = await transcribeAndRepair({
+            run, whisperPath, modelPath, wavPath, workDir: os.tmpdir(),
+            readFile: (p) => fs.readFileSync(p, 'utf-8'),
+          })
+          captured.transcriptFlagged = flagged
+          return segments
+        },
         summarize: (segments) =>
           summarize({
             run: runWithStdin, title: meta.title, segments,
             participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
           }),
         save: (meeting) => {
-          captured.meeting = meeting
+          const withFlag = captured.transcriptFlagged ? { ...meeting, transcriptFlagged: true } : meeting
+          captured.meeting = withFlag
           return saveMeeting({
-            repoRoot: settings.repoRoot, meeting, startedAt: new Date(meta.date), git: systemGit(settings.repoRoot),
+            repoRoot: settings.repoRoot, meeting: withFlag, startedAt: new Date(meta.date), git: systemGit(settings.repoRoot),
             autoSync: settings.autoPush,
           })
         },
