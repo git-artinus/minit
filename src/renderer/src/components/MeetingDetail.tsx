@@ -92,6 +92,11 @@ export function MeetingDetail(): React.JSX.Element {
           </div>
         )}
       </header>
+      {meeting.transcriptFlagged && (
+        <div className="transcript-warning" role="status">
+          일부 구간이 인식 오류로 반복되었을 수 있습니다. 해당 부분의 트랜스크립트·요약은 정확하지 않을 수 있습니다.
+        </div>
+      )}
       <section>
         <h2>요약</h2>
         {meeting.summary
