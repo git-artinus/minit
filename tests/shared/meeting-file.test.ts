@@ -195,6 +195,20 @@ describe('serialize → parse 왕복', () => {
     const parsed = parseMeeting('a.md', raw)
     expect(parsed.recorder).toBeUndefined()
   })
+
+  test('transcriptFlagged가 frontmatter로 왕복된다', () => {
+    const withFlag = { ...meeting, transcriptFlagged: true }
+    const raw = serializeMeeting(withFlag)
+    const parsed = parseMeeting('a.md', raw)
+    expect(parsed.transcriptFlagged).toBe(true)
+  })
+
+  test('플래그가 없으면 frontmatter에 넣지 않고 파싱 시 undefined', () => {
+    const raw = serializeMeeting(meeting)
+    expect(raw).not.toContain('transcriptFlagged')
+    const parsed = parseMeeting('a.md', raw)
+    expect(parsed.transcriptFlagged).toBeUndefined()
+  })
 })
 
 describe('isValidMeetingFilename', () => {
