@@ -1,5 +1,11 @@
 export interface TranscriptSegment { startMs: number; text: string }
 export interface ActionItem { text: string; assignee?: string; due?: string }
+// 회의 본문 섹션(v0.6.0 #3) — 공통 summary 외의 타입별 내용은 순서 있는 섹션 배열로 표현한다.
+// kind가 직렬화·렌더·Slack 렌더 방식을 결정한다(타입별 분기 없음).
+export type MeetingSection =
+  | { heading: string; kind: 'text'; text: string }
+  | { heading: string; kind: 'list'; items: string[] }
+  | { heading: string; kind: 'actions'; items: ActionItem[] }
 export interface MeetingMeta {
   title: string; date: string /* ISO8601 */; durationMin: number; participants: string[]
   // 기록자(v0.4.0 ③b) — GitHub 로그인 상태일 때만 채워진다(로그인 login명). 비로그인 시 생략.
@@ -7,9 +13,15 @@ export interface MeetingMeta {
   // 회의별 Slack 발송 채널 override(v0.6.0 #2) — undefined=설정 기본값 사용 /
   // null=이번 회의 발송 안 함 / string=이 채널로. 회의록 파일에는 저장하지 않는 전송 시점 전용 값.
   slackChannelId?: string | null
+  // 회의 타입(v0.6.0 #3) — meeting-types 레지스트리의 id. 미지정 시 general로 취급한다.
+  meetingType?: string
 }
 export interface Meeting extends MeetingMeta {
-  filename: string; summary: string; actionItems: ActionItem[]; segments: TranscriptSegment[]
+  filename: string
+  meetingType: string  // 저장 시 항상 확정값(구파일 파싱 시 general 폴백)
+  summary: string
+  sections: MeetingSection[]
+  segments: TranscriptSegment[]
   pendingPush?: boolean  // push 실패 상태 표시용 (storage가 설정)
 }
 export type PipelineStage = 'transcribing' | 'summarizing' | 'saving' | 'done'

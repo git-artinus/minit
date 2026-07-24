@@ -1,5 +1,5 @@
 import matter from 'gray-matter'
-import type { ActionItem, Meeting, TranscriptSegment } from './types'
+import type { ActionItem, Meeting, MeetingSection, TranscriptSegment } from './types'
 
 // meetings/ 하위 파일만 다루도록 filename을 보수적으로 검증한다 (경로 이탈 방지).
 // ipc.ts(summary:regenerate)와 github/api.ts(uploadMeeting) 양쪽이 공유한다.
@@ -68,6 +68,16 @@ function serializeActionItem(item: ActionItem): string {
 const ACTION_RE = /^- \[[ x]\] (.+?)(?: \(담당: ([^)]+)\))?(?: \(기한: ([^)]+)\))?$/
 const SEGMENT_RE = /^\[(\d{2}:\d{2}:\d{2})\] (.*)$/
 
+function serializeSection(s: MeetingSection): string {
+  const body =
+    s.kind === 'actions'
+      ? s.items.map(serializeActionItem).join('\n')
+      : s.kind === 'list'
+        ? s.items.map((i) => `- ${i}`).join('\n')
+        : s.text
+  return `## ${s.heading}\n\n${body}`.trimEnd()
+}
+
 export function serializeMeeting(m: Omit<Meeting, 'filename'>): string {
   // frontmatter는 js-yaml(gray-matter 내장) 직렬화로 생성한다 — 문자열 연결 방식은
   // title에 ':'·'#'·','가 들어가면 파싱 실패(THROW)나 값 손실(잘림)을 일으킨다.
@@ -77,54 +87,69 @@ export function serializeMeeting(m: Omit<Meeting, 'filename'>): string {
     title: m.title,
     date: m.date,
     duration: `${m.durationMin}m`,
+    type: m.meetingType,
     participants: m.participants,
   }).trim()
   const summary = `## 요약\n\n${m.summary}`.trimEnd()
-  const actions = `## 액션아이템\n\n${m.actionItems.map(serializeActionItem).join('\n')}`.trimEnd()
+  const sections = m.sections.map(serializeSection).join('\n\n')
   const transcript = `## 트랜스크립트\n\n${m.segments
     .map((s) => `${formatTimestamp(s.startMs)} ${s.text}`)
     .join('\n')}`.trimEnd()
-  return `${fm}\n\n${summary}\n\n${actions}\n\n${transcript}\n`
+  return [fm, summary, sections, transcript].filter((part) => part !== '').join('\n\n') + '\n'
 }
 
 export function parseMeeting(filename: string, raw: string): Meeting {
   const { data, content } = matter(raw)
-  const sections = splitSections(content)
-  const actionItems: ActionItem[] = (sections['액션아이템'] ?? [])
-    .map((line) => ACTION_RE.exec(line))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => ({
-      text: m[1],
-      ...(m[2] ? { assignee: m[2] } : {}),
-      ...(m[3] ? { due: m[3] } : {}),
-    }))
-  const segments: TranscriptSegment[] = (sections['트랜스크립트'] ?? [])
+  const ordered = splitSections(content)
+  const find = (h: string): string[] => ordered.find(([k]) => k === h)?.[1] ?? []
+  const segments: TranscriptSegment[] = find('트랜스크립트')
     .map((line) => SEGMENT_RE.exec(line))
     .filter((m): m is RegExpExecArray => m !== null)
     .map((m) => ({ startMs: parseTimestamp(m[1]), text: m[2] }))
+  // 요약·트랜스크립트를 제외한 모든 헤딩을 섹션으로 취급한다. kind는 파일에 기록하지 않고
+  // (사람이 읽는 마크다운 유지) 내용으로 추론한다 — 구파일(액션아이템)도 이 규칙으로 흡수된다.
+  const sections: MeetingSection[] = ordered
+    .filter(([h]) => h !== '요약' && h !== '트랜스크립트')
+    .map(([heading, lines]) => inferSection(heading, lines))
   return {
     filename,
     ...(typeof data.recorder === 'string' ? { recorder: data.recorder } : {}),
+    meetingType: typeof data.type === 'string' ? data.type : 'general',
     title: String(data.title ?? ''),
     date: typeof data.date === 'string' ? data.date : (data.date instanceof Date ? data.date.toISOString() : String(data.date ?? '')),
     durationMin: parseInt(String(data.duration ?? '0'), 10),
     participants: Array.isArray(data.participants) ? data.participants.map(String) : [],
-    summary: (sections['요약'] ?? []).join('\n').trim(),
-    actionItems,
+    summary: find('요약').join('\n').trim(),
+    sections,
     segments,
   }
 }
 
-function splitSections(content: string): Record<string, string[]> {
-  const sections: Record<string, string[]> = {}
-  let current: string | null = null
+function inferSection(heading: string, lines: string[]): MeetingSection {
+  if (lines.some((l) => ACTION_RE.test(l))) {
+    const items: ActionItem[] = lines
+      .map((l) => ACTION_RE.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => ({ text: m[1], ...(m[2] ? { assignee: m[2] } : {}), ...(m[3] ? { due: m[3] } : {}) }))
+    return { heading, kind: 'actions', items }
+  }
+  if (lines.length > 0 && lines.every((l) => l.startsWith('- '))) {
+    return { heading, kind: 'list', items: lines.map((l) => l.slice(2)) }
+  }
+  return { heading, kind: 'text', text: lines.join('\n') }
+}
+
+// 순서 보존 — 섹션 배열 모델은 파일에 적힌 순서가 곧 표시 순서다.
+function splitSections(content: string): [string, string[]][] {
+  const sections: [string, string[]][] = []
+  let current: string[] | null = null
   for (const line of content.split('\n')) {
     const h = /^## (.+)$/.exec(line)
     if (h) {
-      current = h[1].trim()
-      sections[current] = []
+      current = []
+      sections.push([h[1].trim(), current])
     } else if (current && line.trim() !== '') {
-      sections[current].push(line)
+      current.push(line)
     }
   }
   return sections

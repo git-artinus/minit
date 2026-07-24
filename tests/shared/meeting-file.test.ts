@@ -5,12 +5,19 @@ import {
 } from '../../src/shared/meeting-file'
 
 const meeting = {
+  meetingType: 'general',
   title: '주간 스탠드업',
   date: '2026-07-20T10:30:00+09:00',
   durationMin: 32,
   participants: ['조엘', '케빈'],
   summary: '스프린트 목표를 정리했다.',
-  actionItems: [{ text: 'API 명세 초안 작성', assignee: '조엘' }],
+  sections: [
+    {
+      heading: '액션아이템',
+      kind: 'actions' as const,
+      items: [{ text: 'API 명세 초안 작성', assignee: '조엘' }],
+    },
+  ],
   segments: [
     { startMs: 12_000, text: '오늘 스프린트 목표부터 정리하겠습니다.' },
     { startMs: 45_000, text: '지난주 이슈 공유드립니다.' },
@@ -73,28 +80,75 @@ describe('serialize → parse 왕복', () => {
   test('직렬화한 마크다운을 다시 파싱하면 동일한 데이터가 나온다', () => {
     const raw = serializeMeeting(meeting)
     const parsed = parseMeeting('2026-07-20-주간-스탠드업.md', raw)
+    expect(parsed.meetingType).toBe('general')
     expect(parsed.title).toBe(meeting.title)
     expect(parsed.durationMin).toBe(32)
     expect(parsed.participants).toEqual(['조엘', '케빈'])
     expect(parsed.summary).toBe(meeting.summary)
-    expect(parsed.actionItems).toEqual(meeting.actionItems)
+    expect(parsed.sections).toEqual(meeting.sections)
     expect(parsed.segments).toEqual(meeting.segments)
   })
   test('직렬화 출력은 스펙 형식을 따른다', () => {
     const raw = serializeMeeting(meeting)
     expect(raw).toContain('duration: 32m')
+    expect(raw).toContain('type: general')
     expect(raw).toContain('## 요약')
     expect(raw).toContain('## 액션아이템')
     expect(raw).toContain('- [ ] API 명세 초안 작성 (담당: 조엘)')
     expect(raw).toContain('## 트랜스크립트')
     expect(raw).toContain('[00:00:12] 오늘 스프린트 목표부터 정리하겠습니다.')
   })
-  test('요약·액션아이템이 비어 있어도(요약 실패 폴백) 왕복된다', () => {
-    const raw = serializeMeeting({ ...meeting, summary: '', actionItems: [] })
+  test('요약·섹션이 비어 있어도(요약 실패 폴백) 왕복된다', () => {
+    const raw = serializeMeeting({ ...meeting, summary: '', sections: [] })
     const parsed = parseMeeting('a.md', raw)
     expect(parsed.summary).toBe('')
-    expect(parsed.actionItems).toEqual([])
+    expect(parsed.sections).toEqual([])
     expect(parsed.segments).toHaveLength(2)
+  })
+
+  test('타입별 섹션(list/actions 혼합)이 순서대로 왕복된다', () => {
+    const daily = {
+      ...meeting,
+      meetingType: 'daily',
+      sections: [
+        { heading: '진척', kind: 'list' as const, items: ['A 완료', 'B 진행'] },
+        { heading: '블로커', kind: 'list' as const, items: ['C 대기'] },
+        { heading: '오늘 할 일', kind: 'actions' as const, items: [{ text: 'D 배포', assignee: '영희' }] },
+      ],
+    }
+    const parsed = parseMeeting('f.md', serializeMeeting(daily))
+    expect(parsed.meetingType).toBe('daily')
+    expect(parsed.sections).toEqual(daily.sections)
+  })
+
+  test('text 섹션(문단)이 왕복된다', () => {
+    const withText = {
+      ...meeting,
+      meetingType: 'idea',
+      sections: [
+        { heading: '아이디어', kind: 'list' as const, items: ['x', 'y'] },
+        { heading: '메모', kind: 'text' as const, text: '자유 서술 문단.' },
+      ],
+    }
+    const parsed = parseMeeting('f.md', serializeMeeting(withText))
+    expect(parsed.sections).toEqual(withText.sections)
+  })
+
+  test('하위호환: type 없는 기존 파일은 general + actions 섹션으로 읽힌다', () => {
+    const legacy = [
+      '---', 'title: 옛 회의', "date: '2026-07-01T10:00:00+09:00'", 'duration: 30m',
+      'participants:', '  - 철수', '---', '',
+      '## 요약', '', '지난 회의 요약.', '',
+      '## 액션아이템', '', '- [ ] 문서 작성 (담당: 철수)', '',
+      '## 트랜스크립트', '', '[00:00:00] 시작',
+    ].join('\n')
+    const parsed = parseMeeting('legacy.md', legacy)
+    expect(parsed.meetingType).toBe('general')
+    expect(parsed.summary).toBe('지난 회의 요약.')
+    expect(parsed.sections).toEqual([
+      { heading: '액션아이템', kind: 'actions', items: [{ text: '문서 작성', assignee: '철수' }] },
+    ])
+    expect(parsed.segments).toEqual([{ startMs: 0, text: '시작' }])
   })
 
   test('제목에 콜론이 있어도 파싱이 깨지지 않고 왕복된다 (문자열 연결 직렬화는 gray-matter 파싱을 THROW시킴)', () => {
