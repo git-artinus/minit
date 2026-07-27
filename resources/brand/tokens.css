@@ -1,0 +1,83 @@
+/* ============================================================
+   디자인 토큰 — 간격 · 라운드 · 타입 스케일 · 서피스 · 주황 시스템
+
+   앱(src/renderer/src/theme.css)과 사이트(site/)가 함께 import 하는
+   단일 소스다. 한쪽에서만 값을 바꾸면 랜딩페이지와 앱 색이 어긋난다.
+   ============================================================ */
+:root {
+  /* 간격 스케일 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* 라운드 */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* 타입 스케일 */
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-base: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+
+  /* 뉴트럴 / 서피스 (라이트 — 따뜻한 오프화이트) */
+  --color-bg: #FAF9F7;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F4F2EE;
+  --color-border: #E7E3DC;
+  --color-border-subtle: #F0EDE8;
+  --color-text: #1A1917;
+  --color-text-muted: #6E6A63;
+  /* faint는 브리프 예시(#9B968D, 대비 2.9:1)가 흰 배경에서 AA(4.5:1)에 못 미쳐
+     WCAG 계산으로 재조정한 값(4.4~4.6:1). 근거: docs 리포트 참조 */
+  --color-text-faint: #7A756B;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, .10);
+
+  /* 주황 시스템 */
+  --color-primary: #FF6B35;              /* fill·큰 악센트(버튼·바·닷·링) 전용 */
+  --color-primary-hover: #FF7D4D;
+  /* -strong: 작은 텍스트/아이콘용. 브리프 예시(#DC5A26)가 흰 배경에서 3.8:1로
+     텍스트 AA(4.5:1)에 못 미쳐 #BC4616으로 깊게 조정(흰 배경 5.2:1, 앱배경 5.0:1) */
+  --color-primary-strong: #BC4616;
+  --color-primary-soft: rgba(255, 107, 53, .12);
+  --color-primary-faint: rgba(255, 107, 53, .06);
+  --on-primary: #FFFFFF;
+
+  /* 에러 전용 시맨틱 색 */
+  --color-danger: #C4392B;
+
+  --sidebar-width: 320px;
+  --motion-fast: 120ms ease;
+  --motion-base: 150ms ease;
+}
+
+[data-theme='dark'] {
+  --color-bg: #15140F;
+  --color-surface: #1E1C17;
+  --color-surface-2: #262319;
+  --color-border: #34302A;
+  --color-border-subtle: #241F1D;
+  --color-text: #ECE8E0;
+  --color-text-muted: #98938A;
+  /* 라이트와 동일 사유로 브리프 예시(#6C675E, 서피스 대비 3.0:1)를 #8B857A로 조정(4.4~5.0:1) */
+  --color-text-faint: #8B857A;
+  /* 다크에서는 그림자 대신 border/서피스 계층으로 깊이를 표현 — 거의 0 */
+  --shadow-sm: none;
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, .28);
+
+  --color-primary-strong: #FF8659;        /* 다크 서피스 대비 7.1:1 이상 */
+  --color-primary-soft: rgba(255, 107, 53, .18);
+  --color-primary-faint: rgba(255, 107, 53, .10);
+
+  /* 에러 전용 시맨틱 색 */
+  --color-danger: #F07567;
+}
