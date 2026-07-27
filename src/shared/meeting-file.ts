@@ -68,7 +68,8 @@ function serializeActionItem(item: ActionItem): string {
 const ACTION_RE = /^- \[[ x]\] (.+?)(?: \(담당: ([^)]+)\))?(?: \(기한: ([^)]+)\))?$/
 const SEGMENT_RE = /^\[(\d{2}:\d{2}:\d{2})\] (.*)$/
 
-function serializeSection(s: MeetingSection): string {
+// 공유 포맷(share-format.ts)도 이 규칙을 그대로 쓴다 — 섹션 렌더가 두 벌로 갈라지지 않게 export한다.
+export function serializeSection(s: MeetingSection): string {
   const body =
     s.kind === 'actions'
       ? s.items.map(serializeActionItem).join('\n')
