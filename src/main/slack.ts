@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
 import { meetingTypeDef } from '../shared/meeting-types'
-import type { ActionItem, Meeting, MeetingSection } from '../shared/types'
+import type { ActionItem, Meeting, MeetingSection, SlackSendFailure } from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
   const d = new Date(dateIso)
@@ -142,6 +142,7 @@ type SendSlackNotificationDeps = {
   post: typeof postChatMessage
   fetchImpl: typeof fetch
   log: (...args: unknown[]) => void
+  notifyFailure?: (failure: SlackSendFailure) => void
 }
 
 const defaultDeps: SendSlackNotificationDeps = {
@@ -149,6 +150,11 @@ const defaultDeps: SendSlackNotificationDeps = {
   post: postChatMessage,
   fetchImpl: fetch,
   log: console.error
+}
+
+// 봇 미초대는 실패 사유 중 사용자가 직접 고칠 수 있는 유일한 케이스다.
+function withInviteHint(message: string): string {
+  return message.includes('not_in_channel') ? `${message} — 채널에 Minit 봇을 초대하세요` : message
 }
 
 // pipeline:run 후처리 진입점. 회의록 저장 성공 이후 "덤"으로 붙는 부가 기능이므로 어떤 이유로도
@@ -165,15 +171,23 @@ export function sendSlackNotification(
   // 요약이 없으면(전사만 저장된 상태) 발송을 건너뛴다 — 요약 생성 이후에만 Slack에 올라가야 한다.
   if (meeting.summary.trim() === '') return
 
+  // 실패는 삼키되(파이프라인 무영향) 사용자에게는 알린다 — 조용히 실패하면 사용자는 회의록이
+  // 공유된 줄 안다. 재시도는 하지 않는다(회의록 상세의 공유 모달로 직접 다시 보낼 수 있다).
+  const reportFailure = (reason: string): void => {
+    deps.notifyFailure?.({ title: meeting.title, reason })
+  }
+
   try {
     const body = deps.buildBody(meeting, channel)
     void deps.post(token, body, deps.fetchImpl).catch((e) => {
-      const message = e instanceof Error ? e.message : String(e)
-      const hint = message.includes('not_in_channel') ? ' — 채널에 Minit 봇을 초대하세요' : ''
-      deps.log('[slack] 회의 요약 발송 실패:', message + hint)
+      const message = withInviteHint(e instanceof Error ? e.message : String(e))
+      deps.log('[slack] 회의 요약 발송 실패:', message)
+      reportFailure(message)
     })
   } catch (e) {
-    deps.log('[slack] payload 생성 실패:', e instanceof Error ? e.message : e)
+    const message = e instanceof Error ? e.message : String(e)
+    deps.log('[slack] payload 생성 실패:', message)
+    reportFailure(message)
   }
 }
 
@@ -184,11 +198,12 @@ export function notifySlackForMeeting(
   meeting: Meeting,
   channelId: string | null | undefined,
   loadToken: () => string | null,
+  notifyFailure?: (failure: SlackSendFailure) => void,
   send: typeof sendSlackNotification = sendSlackNotification
 ): void {
   if (!channelId) return
   const token = loadToken()
-  if (token) send(meeting, token, channelId)
+  if (token) send(meeting, token, channelId, { ...defaultDeps, notifyFailure })
 }
 
 // 회의별 채널 override(3-상태)를 설정 기본값과 합쳐 최종 발송 채널을 정한다.

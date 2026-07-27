@@ -610,6 +610,18 @@ article li::before {
 }
 .update-banner-title { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); }
 
+/* 알림 토스트 — 우측 상단(update-banner)·우측 하단(setup-panel)을 피해 상단 중앙에 띄운다. */
+.toast-banner {
+  position: fixed; top: var(--sp-5); left: 50%; transform: translateX(-50%); z-index: 46;
+  max-width: min(520px, calc(100vw - var(--sp-5) * 2));
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md); animation: modal-in var(--motion-base);
+  font-size: var(--fs-sm); line-height: 1.6;
+}
+.toast-banner button { flex-shrink: 0; }
+
 /* ============================================================
    뷰어 경고 배너 — 반복 인식 오류 경고
    ============================================================ */

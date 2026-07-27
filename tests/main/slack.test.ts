@@ -383,6 +383,67 @@ describe('sendSlackNotification', () => {
     expect(logged).toContain('채널에 Minit 봇을 초대하세요')
     expect(logged).not.toContain(token)
   })
+
+  test('발송이 실패하면 회의 제목·사유로 notifyFailure를 호출한다', async () => {
+    const buildBody = vi.fn(() => ({ channel, text: 'ok' }))
+    const post = vi.fn(async () => {
+      throw new Error('네트워크 오류')
+    })
+    const notifyFailure = vi.fn()
+
+    sendSlackNotification(meeting(), token, channel, {
+      buildBody, post, fetchImpl: fetch, log: vi.fn(), notifyFailure
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(notifyFailure).toHaveBeenCalledWith({ title: '주간 회의', reason: '네트워크 오류' })
+  })
+
+  test('not_in_channel이면 notifyFailure 사유에 봇 초대 안내를 붙인다', async () => {
+    const buildBody = vi.fn(() => ({ channel, text: 'ok' }))
+    const post = vi.fn(async () => {
+      throw new Error('slack: not_in_channel')
+    })
+    const notifyFailure = vi.fn()
+
+    sendSlackNotification(meeting(), token, channel, {
+      buildBody, post, fetchImpl: fetch, log: vi.fn(), notifyFailure
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(notifyFailure.mock.calls[0][0].reason).toContain('채널에 Minit 봇을 초대하세요')
+  })
+
+  test('payload 생성이 동기 throw해도 notifyFailure를 호출한다', () => {
+    const buildBody = vi.fn(() => {
+      throw new Error('payload 생성 실패')
+    })
+    const notifyFailure = vi.fn()
+
+    sendSlackNotification(meeting(), token, channel, {
+      buildBody, post: vi.fn(), fetchImpl: fetch, log: vi.fn(), notifyFailure
+    })
+
+    expect(notifyFailure).toHaveBeenCalledWith({ title: '주간 회의', reason: 'payload 생성 실패' })
+  })
+
+  test('발송에 성공하면 notifyFailure를 호출하지 않는다', async () => {
+    const notifyFailure = vi.fn()
+
+    sendSlackNotification(meeting(), token, channel, {
+      buildBody: vi.fn(() => ({ channel, text: 'ok' })),
+      post: vi.fn(async () => undefined),
+      fetchImpl: fetch,
+      log: vi.fn(),
+      notifyFailure
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(notifyFailure).not.toHaveBeenCalled()
+  })
 })
 
 describe('notifySlackForMeeting', () => {
@@ -392,7 +453,7 @@ describe('notifySlackForMeeting', () => {
     const loadToken = vi.fn(() => 'xoxb-token')
     const send = vi.fn()
 
-    notifySlackForMeeting(meeting(), null, loadToken, send)
+    notifySlackForMeeting(meeting(), null, loadToken, undefined, send)
 
     expect(loadToken).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
@@ -402,7 +463,7 @@ describe('notifySlackForMeeting', () => {
     const loadToken = vi.fn(() => null)
     const send = vi.fn()
 
-    notifySlackForMeeting(meeting(), channel, loadToken, send)
+    notifySlackForMeeting(meeting(), channel, loadToken, undefined, send)
 
     expect(loadToken).toHaveBeenCalledTimes(1)
     expect(send).not.toHaveBeenCalled()
@@ -413,9 +474,18 @@ describe('notifySlackForMeeting', () => {
     const send = vi.fn()
     const m = meeting()
 
-    notifySlackForMeeting(m, channel, loadToken, send)
+    notifySlackForMeeting(m, channel, loadToken, undefined, send)
 
-    expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel)
+    expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel, expect.anything())
+  })
+
+  test('실패 알림 콜백을 발송 deps로 넘긴다', () => {
+    const notifyFailure = vi.fn()
+    const send = vi.fn()
+
+    notifySlackForMeeting(meeting(), channel, () => 'xoxb-token', notifyFailure, send)
+
+    expect(send.mock.calls[0][3].notifyFailure).toBe(notifyFailure)
   })
 })
 

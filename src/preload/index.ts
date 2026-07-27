@@ -5,6 +5,7 @@ import type {
   GithubLoginState,
   GithubLoginStatusEvent,
   SlackChannel,
+  SlackSendFailure,
   SlackTokenState,
   UpdateCheckResult,
   UpdateProgress
@@ -52,6 +53,11 @@ const minutingApi = {
     ipcRenderer.invoke('share:exportFile', filename, format),
   shareMeetingToSlack: (filename: string, channelId: string): Promise<void> =>
     ipcRenderer.invoke('share:sendSlack', filename, channelId),
+  onSlackSendFailed: (cb: (f: SlackSendFailure) => void) => {
+    const listener = (_: unknown, f: SlackSendFailure) => cb(f)
+    ipcRenderer.on('slack:send-failed', listener)
+    return () => ipcRenderer.removeListener('slack:send-failed', listener)
+  },
   onTrayCommand: (cb: (cmd: string) => void) => {
     const listener = (_: unknown, cmd: string) => cb(cmd)
     ipcRenderer.on('tray:command', listener)
