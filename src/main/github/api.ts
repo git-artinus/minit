@@ -81,6 +81,35 @@ export async function uploadMeeting(
   if (!res.ok) throw new Error(`GitHub 회의록 업로드 실패: ${res.status}`)
 }
 
+// repos/{repo}/contents/minit/{filename}을 DELETE한다. GitHub Contents API는 삭제에도 현재
+// blob sha를 요구하므로 먼저 조회한다. 원격에 파일이 없으면(sha 조회 404) 이미 목표 상태이므로
+// 조용히 성공으로 끝낸다 — 재시도 큐(pendingDeletes)가 같은 파일을 두 번 지우려 해도 안전하다.
+export async function deleteRemoteMeeting(
+  token: string,
+  repo: string,
+  filename: string,
+  fetchImpl: typeof fetch,
+  timeoutMs = 10_000
+): Promise<void> {
+  if (!isValidMeetingFilename(filename)) throw new Error(`invalid filename: ${filename}`)
+
+  const contentsUrl = `https://api.github.com/repos/${repo}/contents/minit/${encodeURIComponent(filename)}`
+  const sha = await getExistingSha(token, contentsUrl, fetchImpl, timeoutMs)
+  if (!sha) return
+
+  const res = await fetchWithTimeout(
+    fetchImpl,
+    contentsUrl,
+    {
+      method: 'DELETE',
+      headers: authHeaders(token),
+      body: JSON.stringify({ message: `docs(minit): ${filename} 회의록 삭제`, sha })
+    },
+    timeoutMs
+  )
+  if (!res.ok) throw new Error(`GitHub 회의록 삭제 실패: ${res.status}`)
+}
+
 export interface RemoteMeetingFile {
   name: string
   sha: string

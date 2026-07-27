@@ -1,5 +1,13 @@
 import { describe, expect, test, vi } from 'vitest'
-import { pullRemoteMeetings, retryPendingUploads, retryPendingUploadsAndSave, shouldPull, syncMeeting } from '../../../src/main/github/sync'
+import {
+  pullRemoteMeetings,
+  retryPendingDeletes,
+  retryPendingDeletesAndSave,
+  retryPendingUploads,
+  retryPendingUploadsAndSave,
+  shouldPull,
+  syncMeeting
+} from '../../../src/main/github/sync'
 
 describe('syncMeeting', () => {
   test('정상 경로: upload를 호출하고 onFailure는 호출하지 않는다', async () => {
@@ -217,7 +225,7 @@ describe('pullRemoteMeetings', () => {
     const writeLocal = vi.fn()
     const log = vi.fn()
 
-    const saved = await pullRemoteMeetings({ listRemote, download, localExists, writeLocal, log })
+    const saved = await pullRemoteMeetings({ listRemote, download, localExists, isDeleted: () => false, writeLocal, log })
 
     expect(saved).toEqual(['b.md'])
     expect(download).toHaveBeenCalledTimes(1)
@@ -226,13 +234,32 @@ describe('pullRemoteMeetings', () => {
     expect(log).not.toHaveBeenCalled()
   })
 
+  test('삭제 재시도 대기 중인 파일은 원격에 남아 있어도 내려받지 않는다', async () => {
+    const listRemote = vi.fn(async () => [{ name: 'deleted.md', sha: 's1' }, { name: 'keep.md', sha: 's2' }])
+    const download = vi.fn(async (filename: string) => `content of ${filename}`)
+    const writeLocal = vi.fn()
+
+    const saved = await pullRemoteMeetings({
+      listRemote,
+      download,
+      localExists: () => false,
+      isDeleted: (filename: string) => filename === 'deleted.md',
+      writeLocal,
+      log: vi.fn()
+    })
+
+    expect(saved).toEqual(['keep.md'])
+    expect(download).toHaveBeenCalledTimes(1)
+    expect(download).toHaveBeenCalledWith('keep.md')
+  })
+
   test('로컬에 같은 파일명이 있으면 절대 덮어쓰지 않는다(다운로드 자체를 하지 않는다)', async () => {
     const listRemote = vi.fn(async () => [{ name: 'a.md', sha: 's1' }])
     const download = vi.fn()
     const localExists = vi.fn(() => true)
     const writeLocal = vi.fn()
 
-    const saved = await pullRemoteMeetings({ listRemote, download, localExists, writeLocal, log: vi.fn() })
+    const saved = await pullRemoteMeetings({ listRemote, download, localExists, isDeleted: () => false, writeLocal, log: vi.fn() })
 
     expect(saved).toEqual([])
     expect(download).not.toHaveBeenCalled()
@@ -248,6 +275,7 @@ describe('pullRemoteMeetings', () => {
     const saved = await pullRemoteMeetings({
       listRemote,
       download: vi.fn(),
+      isDeleted: () => false,
       localExists: vi.fn(),
       writeLocal: vi.fn(),
       log
@@ -269,6 +297,7 @@ describe('pullRemoteMeetings', () => {
     const saved = await pullRemoteMeetings({
       listRemote,
       download,
+      isDeleted: () => false,
       localExists: vi.fn(() => false),
       writeLocal,
       log
@@ -286,6 +315,7 @@ describe('pullRemoteMeetings', () => {
     const saved = await pullRemoteMeetings({
       listRemote: vi.fn(async () => []),
       download,
+      isDeleted: () => false,
       localExists: vi.fn(),
       writeLocal,
       log: vi.fn()
@@ -314,6 +344,7 @@ describe('pullRemoteMeetings', () => {
     const saved = await pullRemoteMeetings({
       listRemote,
       download,
+      isDeleted: () => false,
       localExists: () => false,
       writeLocal,
       log
@@ -335,6 +366,7 @@ describe('pullRemoteMeetings', () => {
     const saved = await pullRemoteMeetings({
       listRemote,
       download,
+      isDeleted: () => false,
       localExists: () => false,
       writeLocal,
       log
@@ -364,6 +396,7 @@ describe('pullRemoteMeetings', () => {
     const promise = pullRemoteMeetings({
       listRemote: async () => remoteFiles,
       download,
+      isDeleted: () => false,
       localExists: () => false,
       writeLocal: vi.fn(),
       log: vi.fn()
@@ -392,6 +425,7 @@ describe('pullRemoteMeetings', () => {
     const saved = await pullRemoteMeetings({
       listRemote: async () => remoteFiles,
       download,
+      isDeleted: () => false,
       localExists: () => false,
       writeLocal,
       log
@@ -419,5 +453,88 @@ describe('shouldPull', () => {
   test('intervalMs 기본값은 60000ms', () => {
     expect(shouldPull(1_000, 1_000 + 59_999)).toBe(false)
     expect(shouldPull(1_000, 1_000 + 60_000)).toBe(true)
+  })
+})
+
+describe('retryPendingDeletes', () => {
+  test('원격 삭제에 성공한 파일명만 반환한다', async () => {
+    const deleteRemote = vi.fn(async (_t: string, _r: string, filename: string) => {
+      if (filename === 'fail.md') throw new Error('네트워크 오류')
+    })
+    const log = vi.fn()
+
+    const succeeded = await retryPendingDeletes({
+      pending: ['a.md', 'fail.md', 'b.md'],
+      token: 't',
+      repo: 'owner/repo',
+      deleteRemote,
+      fetchImpl: fetch,
+      log
+    })
+
+    expect(succeeded).toEqual(['a.md', 'b.md'])
+    expect(deleteRemote).toHaveBeenCalledTimes(3)
+    expect(log).toHaveBeenCalledTimes(1)
+  })
+
+  test('유효하지 않은 파일명은 원격 호출 없이 큐에서 제거한다', async () => {
+    const deleteRemote = vi.fn(async () => undefined)
+
+    const succeeded = await retryPendingDeletes({
+      pending: ['../secret.md'],
+      token: 't',
+      repo: 'owner/repo',
+      deleteRemote,
+      fetchImpl: fetch,
+      log: vi.fn()
+    })
+
+    expect(succeeded).toEqual(['../secret.md'])
+    expect(deleteRemote).not.toHaveBeenCalled()
+  })
+})
+
+describe('retryPendingDeletesAndSave', () => {
+  test('재시도 도중 큐에 추가된 항목을 유실하지 않고 성공분만 제거한다', async () => {
+    let currentPending = ['a.md', 'b.md']
+    const savePending = vi.fn((updated: string[]) => {
+      currentPending = updated
+    })
+    const deleteRemote = vi.fn(async (_t: string, _r: string, filename: string) => {
+      if (filename === 'a.md') currentPending = [...currentPending, 'new-during-retry.md']
+    })
+
+    await retryPendingDeletesAndSave({
+      pending: ['a.md', 'b.md'],
+      token: 't',
+      repo: 'owner/repo',
+      deleteRemote,
+      fetchImpl: fetch,
+      log: vi.fn(),
+      getCurrentPending: () => currentPending,
+      savePending
+    })
+
+    expect(savePending).toHaveBeenCalledTimes(1)
+    expect(currentPending).toEqual(['new-during-retry.md'])
+  })
+
+  test('성공한 항목이 없으면 저장을 호출하지 않는다', async () => {
+    const savePending = vi.fn()
+
+    await retryPendingDeletesAndSave({
+      pending: ['fail.md'],
+      token: 't',
+      repo: 'owner/repo',
+      deleteRemote: vi.fn(async () => {
+        throw new Error('실패')
+      }),
+      fetchImpl: fetch,
+      log: vi.fn(),
+      getCurrentPending: () => ['fail.md'],
+      savePending
+    })
+
+    expect(savePending).not.toHaveBeenCalled()
   })
 })

@@ -11,7 +11,11 @@ export interface Settings {
   // 암호화 파일로 관리). pendingUploads는 내부 관리 필드(ipc.ts settings:update patch로는
   // 변경할 수 없다 — 업로드 실패 시 큐에 추가·재시도 성공 시 제거는 sync.ts가 담당). githubSync는
   // 업로드/pull 자동 동기화 실행 여부(v0.4.0 ④) — 레포를 처음 선택하는 시점에 자동으로 true가 된다.
-  githubRepo: string | null; githubPromptShown: boolean; githubSync: boolean; pendingUploads: string[]
+  // pendingDeletes도 같은 성격의 내부 관리 필드다 — 사용자가 지운 회의록 중 원격 삭제가 아직
+  // 끝나지 않은 파일명이 쌓인다. 큐에 남아 있는 동안은 pull 후보에서 제외돼 삭제한 회의록이
+  // 다시 내려오지 않는다(github/sync.ts pullRemoteMeetings).
+  githubRepo: string | null; githubPromptShown: boolean; githubSync: boolean
+  pendingUploads: string[]; pendingDeletes: string[]
 }
 
 // 회의록·설정 저장 기본 홈. DMG로 설치한 패키징 앱은 repoRoot 기본값이
@@ -50,13 +54,15 @@ export function migrateLegacySettings(legacyDir: string, newDir: string): void {
 // settings.json은 사용자가 직접 편집하거나 이전 버전이 남긴 손상된 값을 가질 수 있는 신뢰
 // 경계 밖 데이터다. 병합 직후 형태가 어긋난 필드를 가벼운 기본값으로 되돌려 이후 로직(예:
 // pendingUploads.filter/includes)이 타입 가정 위반으로 죽지 않게 방어한다.
+function normalizeFilenameQueue(value: unknown): string[] {
+  return Array.isArray(value) && value.every((f) => typeof f === 'string') ? (value as string[]) : []
+}
+
 function normalizeSettings(merged: Settings, defaults: Settings): Settings {
   return {
     ...merged,
-    pendingUploads:
-      Array.isArray(merged.pendingUploads) && merged.pendingUploads.every((f) => typeof f === 'string')
-        ? merged.pendingUploads
-        : [],
+    pendingUploads: normalizeFilenameQueue(merged.pendingUploads),
+    pendingDeletes: normalizeFilenameQueue(merged.pendingDeletes),
     slackChannelId:
       merged.slackChannelId === null || typeof merged.slackChannelId === 'string' ? merged.slackChannelId : null,
     slackChannelName:
@@ -77,7 +83,7 @@ export function loadSettings(userDataDir: string, defaultRepoRoot: string): Sett
   const defaults: Settings = {
     repoRoot: defaultRepoRoot, modelName: 'ggml-large-v3-turbo.bin', autoPush: true,
     slackChannelId: null, slackChannelName: null, slackPromptShown: false,
-    githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [],
+    githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
   }
 
   fs.mkdirSync(userDataDir, { recursive: true })

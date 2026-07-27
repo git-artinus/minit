@@ -1,3 +1,5 @@
+import { isValidMeetingFilename } from '../../shared/meeting-file'
+
 type UploadFn = (
   token: string,
   repo: string,
@@ -5,6 +7,8 @@ type UploadFn = (
   content: string,
   fetchImpl: typeof fetch
 ) => Promise<void>
+
+type DeleteFn = (token: string, repo: string, filename: string, fetchImpl: typeof fetch) => Promise<void>
 
 export interface SyncMeetingDeps {
   filename: string
@@ -91,12 +95,66 @@ export async function retryPendingUploadsAndSave(deps: RetryPendingUploadsAndSav
   }
 }
 
+export interface RetryPendingDeletesDeps {
+  pending: string[]
+  token: string
+  repo: string
+  deleteRemote: DeleteFn
+  fetchImpl: typeof fetch
+  log: (...args: unknown[]) => void
+}
+
+// meetings:list 호출 시 원격 삭제 실패분(settings.pendingDeletes)을 재시도한다. 큐에서 제거해도
+// 되는 파일명(삭제 성공 + 애초에 원격 API로 보낼 수 없는 잘못된 이름)을 반환한다 — 실패분은
+// 제외해 다음 주기에 다시 시도한다. retryPendingUploads와 동일하게 개별 실패를 흡수하며 전체가
+// throw하지 않는다.
+export async function retryPendingDeletes(deps: RetryPendingDeletesDeps): Promise<string[]> {
+  const succeeded: string[] = []
+  for (const filename of deps.pending) {
+    // 잘못된 이름은 재시도해도 영원히 실패한다 — 큐에 무한히 남지 않도록 조용히 제거한다.
+    if (!isValidMeetingFilename(filename)) {
+      succeeded.push(filename)
+      continue
+    }
+    try {
+      await deps.deleteRemote(deps.token, deps.repo, filename, deps.fetchImpl)
+      succeeded.push(filename)
+    } catch (e) {
+      deps.log('[github] 재시도 삭제 실패:', e instanceof Error ? e.message : e)
+    }
+  }
+  return succeeded
+}
+
+export interface RetryPendingDeletesAndSaveDeps extends RetryPendingDeletesDeps {
+  getCurrentPending: () => string[]
+  savePending: (updated: string[]) => void
+}
+
+// retryPendingUploadsAndSave와 같은 lost-update 방지 규칙 — 저장 직전에 최신 큐를 다시 읽어
+// 성공분만 제거한다(재시도 도중 새로 추가된 삭제 대기 항목을 덮어쓰지 않는다).
+export async function retryPendingDeletesAndSave(deps: RetryPendingDeletesAndSaveDeps): Promise<void> {
+  const succeeded = await retryPendingDeletes(deps)
+  if (succeeded.length === 0) return
+
+  const succeededSet = new Set(succeeded)
+  const current = deps.getCurrentPending()
+  const updated = current.filter((f) => !succeededSet.has(f))
+  if (updated.length !== current.length) {
+    deps.savePending(updated)
+  }
+}
+
 export interface PullRemoteMeetingsDeps {
   // token/repo/fetchImpl은 호출부(ipc.ts)가 클로저로 미리 묶어 넘긴다 — 이 모듈은 순수 로직만
   // 다룬다.
   listRemote: () => Promise<Array<{ name: string; sha: string }>>
   download: (filename: string) => Promise<string>
   localExists: (filename: string) => boolean
+  // 사용자가 지웠지만 원격 삭제가 아직 끝나지 않은 파일(settings.pendingDeletes). 여기 걸리면
+  // 원격에 남아 있어도 내려받지 않는다 — 재시도가 성공하기 전까지 삭제한 회의록이 부활하는 것을
+  // 막는 유일한 방어선이다.
+  isDeleted: (filename: string) => boolean
   // writeLocal 계약(리뷰 Fix 1 — 무유실 원자 보장): 반드시 배타적 생성으로 구현해야 한다
   // (예: fs.writeFileSync(path, content, { flag: 'wx' })). localExists 확인과 실제 쓰기 사이의
   // 레이스 윈도우에서 로컬 쪽이 먼저 같은 파일을 만들었다면 EEXIST 성격의 예외를 던져야 하며,
@@ -134,7 +192,7 @@ export async function pullRemoteMeetings(deps: PullRemoteMeetingsDeps): Promise<
     return saved
   }
 
-  const candidates = remote.filter((file) => !deps.localExists(file.name))
+  const candidates = remote.filter((file) => !deps.localExists(file.name) && !deps.isDeleted(file.name))
 
   let targets = candidates
   if (candidates.length > MAX_DOWNLOADS_PER_CYCLE) {

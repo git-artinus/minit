@@ -20,6 +20,7 @@ describe('loadSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
       const written = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))
       expect(written).toEqual({
@@ -33,6 +34,7 @@ describe('loadSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
     } finally {
       fs.rmSync(tempDir, { recursive: true })
@@ -63,6 +65,7 @@ describe('loadSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
       const currentMtime = fs.statSync(path.join(tempDir, 'settings.json')).mtime.getTime()
       expect(currentMtime).toBe(originalMtime)
@@ -90,6 +93,7 @@ describe('loadSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
 
       // Original should be in .bak
@@ -109,6 +113,7 @@ describe('loadSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
     } finally {
       fs.rmSync(tempDir, { recursive: true })
@@ -156,6 +161,7 @@ describe('loadSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
     } finally {
       fs.rmSync(tempDir, { recursive: true })
@@ -270,6 +276,23 @@ describe('loadSettings', () => {
     }
   })
 
+  test('pendingDeletes 기본값은 빈 배열이고, 저장된 값이 있으면 그대로 병합된다', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      const file = path.join(tempDir, 'settings.json')
+      fs.writeFileSync(file, JSON.stringify({ repoRoot: '/custom-repo' }, null, 2))
+      expect(loadSettings(tempDir, '/default-repo').pendingDeletes).toEqual([])
+
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ repoRoot: '/custom-repo', pendingDeletes: ['2026-07-22-회의.md'] }, null, 2)
+      )
+      expect(loadSettings(tempDir, '/default-repo').pendingDeletes).toEqual(['2026-07-22-회의.md'])
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
   test('githubSync 기본값은 false다(기존 settings.json에 키가 없어도 병합된다)', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
     try {
@@ -323,6 +346,20 @@ describe('loadSettings 방어적 정규화(손상된 값)', () => {
       )
       const result = loadSettings(tempDir, '/default-repo')
       expect(result.pendingUploads).toEqual([])
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  test('pendingDeletes가 문자열 배열이 아니면 빈 배열로 정규화한다', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify({ repoRoot: '/custom-repo', pendingDeletes: ['a.md', 7] }, null, 2)
+      )
+      const result = loadSettings(tempDir, '/default-repo')
+      expect(result.pendingDeletes).toEqual([])
     } finally {
       fs.rmSync(tempDir, { recursive: true })
     }
@@ -468,6 +505,7 @@ describe('saveSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       }
       saveSettings(tempDir, toSave)
 
@@ -493,6 +531,7 @@ describe('saveSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
       const written = JSON.parse(fs.readFileSync(path.join(nested, 'settings.json'), 'utf-8'))
       expect(written).toEqual({
@@ -506,6 +545,7 @@ describe('saveSettings', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
       })
     } finally {
       fs.rmSync(parent, { recursive: true })
@@ -528,6 +568,7 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
         githubPromptShown: false,
         githubSync: false,
         pendingUploads: [],
+        pendingDeletes: [],
         // safeStorage 미가용으로 아직 암호화 저장소로 이관되지 못한 v0.3.x 평문 잔존 필드
         slackBotToken: 'xoxb-legacy-unmigrated',
       }
@@ -555,13 +596,13 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
       saveSettings(tempDir, {
         repoRoot: '/r', modelName: 'm', autoPush: true,
         slackChannelId: null, slackChannelName: null, slackPromptShown: false,
-        githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [],
+        githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
       })
       const raw = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))
       expect(Object.keys(raw).sort()).toEqual(
         [
           'repoRoot', 'modelName', 'autoPush', 'slackChannelId', 'slackChannelName',
-          'slackPromptShown', 'githubRepo', 'githubPromptShown', 'githubSync', 'pendingUploads',
+          'slackPromptShown', 'githubRepo', 'githubPromptShown', 'githubSync', 'pendingUploads', 'pendingDeletes',
         ].sort()
       )
     } finally {
@@ -576,7 +617,7 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
       saveSettings(tempDir, {
         repoRoot: '/r', modelName: 'm', autoPush: true,
         slackChannelId: null, slackChannelName: null, slackPromptShown: false,
-        githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [],
+        githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
       })
       const raw = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))
       expect(raw.repoRoot).toBe('/r')
