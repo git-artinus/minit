@@ -4,6 +4,7 @@ import { mergeParagraphs } from '../../../shared/transcript'
 import { meetingTypeDef } from '../../../shared/meeting-types'
 import type { MeetingSection } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
+import { ShareMeetingModal } from './ShareMeetingModal'
 
 // 사용량 한도 초과일 가능성이 있는 에러 메시지 패턴(Claude CLI가 남기는 문자열 기준) — 실버그
 // 대응(v0.4.0 ③b): 재생성 실패를 무반응으로 삼키지 않고 표면화한다.
@@ -39,6 +40,7 @@ export function MeetingDetail(): React.JSX.Element {
   const meeting = meetings.find((m) => m.filename === selected)
   const [regenerating, setRegenerating] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   // 기존(v0.5.0 이전) 회의록은 endMs가 없어 start→start 근사 gap으로 병합된다. 원본 파일은 수정하지 않는다.
   const paragraphs = useMemo(() => mergeParagraphs(meeting?.segments ?? []), [meeting?.segments])
   if (!meeting) {
@@ -78,7 +80,21 @@ export function MeetingDetail(): React.JSX.Element {
   return (
     <article>
       <header className="detail-header">
-        <h1>{meeting.title}</h1>
+        <div className="detail-header-top">
+          <h1>{meeting.title}</h1>
+          <button type="button" className="btn-ghost share-btn" onClick={() => setShareOpen(true)}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+              <path
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 3v12M12 3 8 7M12 3l4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"
+              />
+            </svg>
+            공유
+          </button>
+        </div>
         <p className="date">
           {meeting.date.slice(0, 10)} {formatStartTime(meeting.date)} · {meeting.durationMin}분 ·{' '}
           {meetingTypeDef(meeting.meetingType).label}
@@ -132,6 +148,7 @@ export function MeetingDetail(): React.JSX.Element {
           ))}
         </div>
       </section>
+      {shareOpen && <ShareMeetingModal meeting={meeting} onClose={() => setShareOpen(false)} />}
     </article>
   )
 }
