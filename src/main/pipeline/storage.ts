@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs'
 import path from 'node:path'
-import { meetingFilename, parseMeeting, serializeMeeting } from '../../shared/meeting-file'
+import { isValidMeetingFilename, meetingFilename, parseMeeting, serializeMeeting } from '../../shared/meeting-file'
 import type { Meeting } from '../../shared/types'
 import type { RunCommand } from './transcriber'
 
@@ -77,6 +77,60 @@ export async function saveMeeting(deps: {
     pushed = true
   } catch { /* 로컬 커밋은 남아 있음 — pushPending으로 재시도 */ }
   return { filename, pushed }
+}
+
+export interface DeleteResult { deleted: boolean; pushed: boolean }
+
+// 커밋 메시지에 쓸 회의 제목. 렌더러가 넘긴 값을 믿지 않고 저장된 파일에서 직접 읽는다.
+// 파싱 실패(손상된 파일)면 파일명으로 대체한다 — 삭제 자체를 막을 이유는 없다.
+function meetingTitleOf(file: string, filename: string): string {
+  try {
+    return parseMeeting(filename, fs.readFileSync(file, 'utf-8')).title || filename
+  } catch {
+    return filename
+  }
+}
+
+// 회의록 하나를 지운다. 파일은 지우기 전에 OS 휴지통으로 보내(trash 주입) 실수 복구 여지를
+// 남기고, git 레포면 삭제를 스테이징해 커밋한다. 저장 경로(saveMeeting)와 같은 실패 격리
+// 원칙 — git 단계 실패는 이미 끝난 파일 삭제를 되돌리지 않는다(로컬 커밋이 밀릴 뿐이며,
+// 다음 저장·pushPending에서 함께 정리된다).
+export async function deleteMeeting(deps: {
+  repoRoot: string
+  filename: string
+  git: RunCommand
+  autoSync: boolean
+  // shell.trashItem 주입점(main 프로세스 밖에서 테스트할 수 있도록).
+  trash: (absolutePath: string) => Promise<void>
+}): Promise<DeleteResult> {
+  if (!isValidMeetingFilename(deps.filename)) throw new Error(`invalid filename: ${deps.filename}`)
+
+  const relative = path.join('meetings', deps.filename)
+  const file = path.join(deps.repoRoot, relative)
+  if (!fs.existsSync(file)) return { deleted: false, pushed: false }
+
+  const title = meetingTitleOf(file, deps.filename)
+
+  await deps.trash(file)
+
+  if (!isGitRepo(deps.repoRoot)) return { deleted: true, pushed: false }
+
+  try {
+    await deps.git('git', ['add', '-A', '--', relative])
+    await deps.git('git', ['commit', '-m', `docs(meetings): ${title} 회의록 삭제`])
+  } catch {
+    // 추적되지 않던 파일이거나 커밋 자체가 거부된 경우 — 파일은 이미 지워졌으므로 삭제는 성공이다.
+    return { deleted: true, pushed: false }
+  }
+
+  if (!deps.autoSync) return { deleted: true, pushed: false }
+
+  let pushed = false
+  try {
+    await deps.git('git', ['push'])
+    pushed = true
+  } catch { /* 로컬 커밋은 남아 있음 — pushPending으로 재시도 */ }
+  return { deleted: true, pushed }
 }
 
 export async function pushPending(deps: { repoRoot: string; git: RunCommand; autoSync: boolean }): Promise<boolean> {

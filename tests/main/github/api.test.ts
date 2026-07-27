@@ -1,5 +1,12 @@
 import { describe, expect, test, vi } from 'vitest'
-import { downloadRemoteMeeting, fetchViewer, listRemoteMeetings, listRepos, uploadMeeting } from '../../../src/main/github/api'
+import {
+  deleteRemoteMeeting,
+  downloadRemoteMeeting,
+  fetchViewer,
+  listRemoteMeetings,
+  listRepos,
+  uploadMeeting
+} from '../../../src/main/github/api'
 
 function jsonResponse(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response
@@ -189,5 +196,50 @@ describe('downloadRemoteMeeting', () => {
     await expect(
       downloadRemoteMeeting('ghu_token', 'git-artinus/minit', 'a.md', fetchImpl as unknown as typeof fetch)
     ).rejects.toThrow(/404/)
+  })
+})
+
+describe('deleteRemoteMeeting', () => {
+  test('sha를 조회해 DELETE한다', async () => {
+    const fetchImpl = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === 'DELETE') return jsonResponse(200, {})
+      return jsonResponse(200, { sha: 'abc123' })
+    })
+
+    await deleteRemoteMeeting('ghu_token', 'git-artinus/minit', '2026-07-22-회의.md', fetchImpl as unknown as typeof fetch)
+
+    const delCall = fetchImpl.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'DELETE')!
+    expect(delCall[0]).toBe('https://api.github.com/repos/git-artinus/minit/contents/minit/2026-07-22-%ED%9A%8C%EC%9D%98.md')
+    const body = JSON.parse((delCall[1] as RequestInit).body as string)
+    expect(body).toEqual({ message: 'docs(minit): 2026-07-22-회의.md 회의록 삭제', sha: 'abc123' })
+  })
+
+  test('원격에 파일이 없으면(404) DELETE 없이 성공으로 끝낸다', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(404, {}))
+
+    await expect(
+      deleteRemoteMeeting('ghu_token', 'git-artinus/minit', 'a.md', fetchImpl as unknown as typeof fetch)
+    ).resolves.toBeUndefined()
+    // sha 조회 1회로 끝 — 뒤따르는 DELETE 요청이 없었다는 뜻이다.
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  test('DELETE가 비2xx면 throw한다', async () => {
+    const fetchImpl = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === 'DELETE') return jsonResponse(409, {})
+      return jsonResponse(200, { sha: 'abc123' })
+    })
+
+    await expect(
+      deleteRemoteMeeting('ghu_token', 'git-artinus/minit', 'a.md', fetchImpl as unknown as typeof fetch)
+    ).rejects.toThrow(/409/)
+  })
+
+  test('유효하지 않은 filename이면 네트워크 호출 없이 throw한다', async () => {
+    const fetchImpl = vi.fn()
+    await expect(
+      deleteRemoteMeeting('ghu_token', 'git-artinus/minit', '../secret.md', fetchImpl as unknown as typeof fetch)
+    ).rejects.toThrow()
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 })

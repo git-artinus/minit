@@ -32,6 +32,9 @@ const minutingApi = {
     return () => ipcRenderer.removeListener('pipeline:status', listener)
   },
   listMeetings: () => ipcRenderer.invoke('meetings:list'),
+  // 확인 다이얼로그는 main에서 띄운다 — 취소하면 deleted=false로 돌아온다.
+  deleteMeeting: (filename: string): Promise<{ deleted: boolean; canceled: boolean }> =>
+    ipcRenderer.invoke('meetings:delete', filename),
   getRoster: () => ipcRenderer.invoke('roster:get'),
   addRosterParticipants: (names: string[]) => ipcRenderer.invoke('roster:add', names),
   renameRosterParticipant: (from: string, to: string) => ipcRenderer.invoke('roster:rename', { from, to }),

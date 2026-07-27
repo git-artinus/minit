@@ -15,7 +15,7 @@ import { initializeSettings } from './settings-init'
 import { runPipeline } from './pipeline/pipeline'
 import { transcribeAndRepair } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
-import { isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
+import { deleteMeeting, isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
 import { regenerateSummary } from './pipeline/regenerate'
 import {
   addParticipants, dedupeAndSort, loadRoster, mergeNames, parseImportInput,
@@ -33,8 +33,21 @@ import {
   migrateLegacySlackToken,
   saveToken as saveSlackToken
 } from './slack-token-store'
-import { downloadRemoteMeeting, fetchViewer, listRemoteMeetings, listRepos as listGithubRepos, uploadMeeting } from './github/api'
-import { pullRemoteMeetings, retryPendingUploadsAndSave, shouldPull, syncMeeting } from './github/sync'
+import {
+  deleteRemoteMeeting,
+  downloadRemoteMeeting,
+  fetchViewer,
+  listRemoteMeetings,
+  listRepos as listGithubRepos,
+  uploadMeeting
+} from './github/api'
+import {
+  pullRemoteMeetings,
+  retryPendingDeletesAndSave,
+  retryPendingUploadsAndSave,
+  shouldPull,
+  syncMeeting
+} from './github/sync'
 import { isValidMeetingFilename, serializeMeeting } from '../shared/meeting-file'
 import type {
   AppSettings,
@@ -196,6 +209,9 @@ export function registerIpc(
               listRemote: () => listRemoteMeetings(token, repo, fetch),
               download: (filename) => downloadRemoteMeeting(token, repo, filename, fetch),
               localExists: (filename) => fs.existsSync(path.join(meetingsDir, filename)),
+              // 원격 삭제가 아직 밀려 있는 회의록(#17) — 여기서 걸러내지 않으면 사용자가 지운
+              // 회의록이 다음 pull에 그대로 다시 내려온다.
+              isDeleted: (filename) => settings.pendingDeletes.includes(filename),
               // 리뷰 Fix 1(Critical) — 무유실 원자 보장: 'wx'(배타적 생성)로 localExists 확인과
               // 실제 쓰기 사이의 레이스를 없앤다. 그 사이 다른 경로(예: git pull, 사용자 직접 저장)로
               // 동일 파일명이 먼저 생겼다면 EEXIST가 던져지고, pullRemoteMeetings가 이를
@@ -239,6 +255,27 @@ export function registerIpc(
           getCurrentPending: () => settings.pendingUploads,
           savePending: (updated) => {
             settings = { ...settings, pendingUploads: updated }
+            saveSettings(configDir, settings)
+          },
+        })
+      }
+    }
+
+    // 원격 삭제 재시도 큐(#17) — 업로드 큐와 같은 규칙으로 성공분만 제거한다. 큐가 빌 때까지
+    // 해당 파일명은 위 pull 단계에서도 제외되므로 재시도가 늦어져도 회의록이 되살아나지 않는다.
+    if (settings.githubRepo && settings.githubSync && settings.pendingDeletes.length > 0) {
+      const token = loadGithubToken(configDir, { fs, safeStorage })
+      if (token) {
+        await retryPendingDeletesAndSave({
+          pending: settings.pendingDeletes,
+          token,
+          repo: settings.githubRepo,
+          deleteRemote: deleteRemoteMeeting,
+          fetchImpl: fetch,
+          log: console.error,
+          getCurrentPending: () => settings.pendingDeletes,
+          savePending: (updated) => {
+            settings = { ...settings, pendingDeletes: updated }
             saveSettings(configDir, settings)
           },
         })
@@ -415,6 +452,58 @@ export function registerIpc(
     return { names: parseImportInput(raw) }
   })
 
+  // 회의록 삭제(#17) — 파괴적 동작이라 확인 다이얼로그를 여기서 띄우고(취소면 아무것도 하지
+  // 않는다), 로컬은 휴지통으로 보낸 뒤 git·원격까지 같은 호출 안에서 정리한다.
+  ipcMain.handle('meetings:delete', async (_e, filename: string) => {
+    if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
+
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      buttons: ['삭제', '취소'],
+      defaultId: 1,
+      cancelId: 1,
+      message: '이 회의록을 삭제할까요?',
+      detail: '파일은 휴지통으로 이동합니다. GitHub에 동기화된 회의록이면 원격에서도 삭제됩니다.',
+    })
+    // canceled를 따로 알려준다 — 렌더러는 취소일 때만 목록 새로고침을 건너뛴다(디스크에서 이미
+    // 사라진 파일을 지운 경우에는 deleted=false여도 목록을 다시 읽어야 한다).
+    if (response !== 0) return { deleted: false, canceled: true }
+
+    const result = await deleteMeeting({
+      repoRoot: settings.repoRoot, filename,
+      git: systemGit(settings.repoRoot), autoSync: settings.autoPush,
+      trash: (absolutePath) => shell.trashItem(absolutePath),
+    })
+
+    // 미업로드 큐에 남아 있으면 지운 회의록을 뒤늦게 다시 올리는 셈이 된다 — 함께 제거한다.
+    if (settings.pendingUploads.includes(filename)) {
+      settings = { ...settings, pendingUploads: settings.pendingUploads.filter((f) => f !== filename) }
+      saveSettings(configDir, settings)
+    }
+
+    if (settings.githubRepo && settings.githubSync) {
+      const enqueueDelete = (): void => {
+        if (settings.pendingDeletes.includes(filename)) return
+        settings = { ...settings, pendingDeletes: [...settings.pendingDeletes, filename] }
+        saveSettings(configDir, settings)
+      }
+      const token = loadGithubToken(configDir, { fs, safeStorage })
+      // 토큰이 없으면(로그아웃 상태) 지금은 지울 수 없다 — 큐에 넣어두면 다음 로그인 후
+      // meetings:list에서 정리되고, 그 전까지는 pull 후보에서 제외돼 부활하지 않는다.
+      if (!token) enqueueDelete()
+      else {
+        try {
+          await deleteRemoteMeeting(token, settings.githubRepo, filename, fetch)
+        } catch (e) {
+          console.error('[github] 원격 회의록 삭제 실패:', e instanceof Error ? e.message : e)
+          enqueueDelete()
+        }
+      }
+    }
+
+    return { deleted: result.deleted, canceled: false }
+  })
+
   ipcMain.handle('summary:regenerate', async (_e, filename: string) => {
     if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
     const updated = await regenerateSummary({
@@ -463,9 +552,13 @@ export function registerIpc(
     if ('githubSync' in patch && typeof patch.githubSync !== 'boolean') {
       throw new Error('invalid githubSync')
     }
-    // pendingUploads는 내부 관리 필드(github/sync.ts만 갱신) — renderer가 patch로 바꿀 수 없다.
+    // pendingUploads·pendingDeletes는 내부 관리 필드(github/sync.ts·meetings:delete만 갱신) —
+    // renderer가 patch로 바꿀 수 없다.
     if ('pendingUploads' in patch) {
       throw new Error('pendingUploads는 변경할 수 없는 필드입니다')
+    }
+    if ('pendingDeletes' in patch) {
+      throw new Error('pendingDeletes는 변경할 수 없는 필드입니다')
     }
     // 리뷰 Fix 2 — githubRepo가 실제로 바뀌면(동일 값 재설정은 제외) 스로틀을 리셋한다: 이전
     // 레포 기준으로 쌓인 lastPulledAt은 새 레포에 대해 의미가 없다.
