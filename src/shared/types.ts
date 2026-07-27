@@ -61,6 +61,12 @@ export interface SlackChannel {
   isPrivate: boolean
 }
 
+// 자동 발송 실패 알림 payload — 메인이 렌더러로 보낸다(slack:send-failed).
+export interface SlackSendFailure {
+  title: string
+  reason: string
+}
+
 export interface GithubLoginState {
   loggedIn: boolean
   login?: string

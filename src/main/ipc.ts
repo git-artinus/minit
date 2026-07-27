@@ -3,7 +3,7 @@ import { promisify } from 'node:util'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app, dialog, ipcMain, safeStorage, shell, type BrowserWindow } from 'electron'
+import { app, clipboard, dialog, ipcMain, safeStorage, shell, type BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { checkEnv, modelFilePath, resolveWhisperCli, systemCommandExists } from './env-check'
 import { downloadModel, modelUrl } from './model-download'
@@ -23,7 +23,7 @@ import {
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { listChannels, notifySlackForMeeting, resolveSlackChannelId } from './slack'
+import { buildPostMessageBody, listChannels, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
 import { deleteToken as deleteGithubToken, loadToken as loadGithubToken, saveToken as saveGithubToken } from './github/token-store'
@@ -48,7 +48,8 @@ import {
   shouldPull,
   syncMeeting
 } from './github/sync'
-import { isValidMeetingFilename, serializeMeeting } from '../shared/meeting-file'
+import { isValidMeetingFilename, parseMeeting, serializeMeeting } from '../shared/meeting-file'
+import { exportContent, exportFileName, type ExportFormat } from '../shared/share-format'
 import type {
   AppSettings,
   GithubLoginState,
@@ -56,6 +57,7 @@ import type {
   MeetingMeta,
   Roster,
   SlackChannel,
+  SlackSendFailure,
   SlackTokenState,
   UpdateCheckResult
 } from '../shared/types'
@@ -85,6 +87,11 @@ export function registerIpc(
 ): void {
   const userData = app.getPath('userData')
   const configDir = minitHome()
+  // 자동 발송 실패는 조용히 넘기지 않고 알린다 — 사용자는 회의록이 공유된 줄 안다. 재시도는
+  // 하지 않는다(회의록 상세의 공유 모달로 직접 다시 보낼 수 있다).
+  const sendSlackFailureNotice = (failure: SlackSendFailure): void => {
+    if (!win.isDestroyed()) win.webContents.send('slack:send-failed', failure)
+  }
   // 레거시 설정 파일 위치 이전(userData → ~/.minit) → 레거시 평문 Slack 토큰 암호화 이관 →
   // 최종 Settings 로드, 이 순서 의존을 initializeSettings 함수 자체가 못박는다(리뷰 Fix 2 —
   // registerIpc는 electron 의존이라 ipc 테스트 하네스가 없으므로, 순서 검증은 이 함수의
@@ -343,14 +350,16 @@ export function registerIpc(
 
       if ('filename' in result && captured.meeting) {
         const meeting: Meeting = { ...captured.meeting, filename: result.filename }
-        // 실패 격리: Slack 발송은 파이프라인 결과에 영향을 주지 않는다(회의록 무영향, 콘솔 로그만 남긴다).
-        // sendSlackNotification 자체가 payload 생성 동기 예외·발송 비동기 실패를 모두 흡수하므로
-        // 여기서 별도 try/catch가 필요 없다. 봇 토큰은 암호화 저장소에서만 로드한다(settings.json에는
-        // 채널 ID/이름만 남는다). summary:regenerate 성공 후에도 동일 경로(notifySlackForMeeting)를 탄다.
+        // 실패 격리: Slack 발송은 파이프라인 결과에 영향을 주지 않는다(회의록 무영향). 실패해도
+        // throw하지 않고 렌더러에 알림만 보낸다. sendSlackNotification 자체가 payload 생성 동기
+        // 예외·발송 비동기 실패를 모두 흡수하므로 여기서 별도 try/catch가 필요 없다. 봇 토큰은
+        // 암호화 저장소에서만 로드한다(settings.json에는 채널 ID/이름만 남는다).
+        // summary:regenerate 성공 후에도 동일 경로(notifySlackForMeeting)를 탄다.
         notifySlackForMeeting(
           meeting,
           resolveSlackChannelId(meta.slackChannelId, settings.slackChannelId),
-          () => loadSlackToken(configDir, { fs, safeStorage })
+          () => loadSlackToken(configDir, { fs, safeStorage }),
+          sendSlackFailureNotice
         )
 
         // GitHub 업로드(로그인+레포 설정+자동 동기화 켜짐일 때만, 단방향 업로드) — syncMeeting도
@@ -517,7 +526,12 @@ export function registerIpc(
       autoSync: settings.autoPush,
     })
     // pipeline:run과 동일한 후처리 경로 — 요약이 갱신된 뒤에만 Slack 발송을 시도한다(실패 격리 동일).
-    notifySlackForMeeting(updated, settings.slackChannelId, () => loadSlackToken(configDir, { fs, safeStorage }))
+    notifySlackForMeeting(
+      updated,
+      settings.slackChannelId,
+      () => loadSlackToken(configDir, { fs, safeStorage }),
+      sendSlackFailureNotice
+    )
     return updated
   })
 
@@ -749,4 +763,40 @@ export function registerIpc(
       return toAppSettings()
     }
   )
+
+  // ── 회의록 공유(수동) ──────────────────────────────────────────────────
+  // 저장 직후 자동 발송(notifySlackForMeeting)과 달리 사용자가 직접 누른 액션이므로 실패를
+  // 삼키지 않는다 — 예외를 그대로 렌더러로 올려 공유 모달이 사유를 표시한다.
+  const readMeetingFile = (filename: string): string => {
+    if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
+    return fs.readFileSync(path.join(settings.repoRoot, 'meetings', filename), 'utf-8')
+  }
+
+  ipcMain.handle('clipboard:write', (_e, text: string): void => {
+    if (typeof text !== 'string') throw new Error('invalid text')
+    clipboard.writeText(text)
+  })
+
+  ipcMain.handle(
+    'share:exportFile',
+    async (_e, filename: string, format: ExportFormat): Promise<{ saved: boolean; path?: string }> => {
+      if (format !== 'md' && format !== 'txt') throw new Error('invalid format')
+      const raw = readMeetingFile(filename)
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        defaultPath: exportFileName(filename, format),
+        filters: [{ name: format === 'md' ? 'Markdown' : 'Text', extensions: [format] }],
+      })
+      if (canceled || !filePath) return { saved: false }
+      fs.writeFileSync(filePath, exportContent(filename, raw, format))
+      return { saved: true, path: filePath }
+    }
+  )
+
+  ipcMain.handle('share:sendSlack', async (_e, filename: string, channelId: string): Promise<void> => {
+    if (typeof channelId !== 'string' || channelId.trim() === '') throw new Error('invalid channelId')
+    const token = loadSlackToken(configDir, { fs, safeStorage })
+    if (!token) throw new Error('Slack 봇 토큰이 등록되어 있지 않습니다')
+    const meeting = parseMeeting(filename, readMeetingFile(filename))
+    await postChatMessage(token, buildPostMessageBody(meeting, channelId), fetch)
+  })
 }

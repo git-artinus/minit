@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { SlackPromptModal } from './components/SlackPromptModal'
 import { GithubPromptModal } from './components/GithubPromptModal'
 import { UpdateBanner } from './components/UpdateBanner'
+import { SlackFailureBanner } from './components/SlackFailureBanner'
 import './theme.css'
 
 export default function App(): React.JSX.Element {
@@ -90,6 +91,7 @@ export default function App(): React.JSX.Element {
             설치 가드(리뷰 Fix Critical)가 녹음 중 여부(useMeetings)를 읽어야 해서 MeetingsProvider
             안으로 옮겼다. */}
         <UpdateBanner />
+        <SlackFailureBanner />
       </MeetingsProvider>
       {/* 온보딩 비차단화(v0.3.0 ①) — 메인 UI와 병행 렌더, 구성 완료 시 자동으로 사라진다. */}
       <SetupPanel />
