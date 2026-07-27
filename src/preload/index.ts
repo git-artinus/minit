@@ -9,6 +9,7 @@ import type {
   UpdateCheckResult,
   UpdateProgress
 } from '../shared/types'
+import type { ExportFormat } from '../shared/share-format'
 
 // Custom APIs for renderer (template demo — kept until Tasks 12-14 replace the renderer)
 const api = {}
@@ -44,6 +45,13 @@ const minutingApi = {
   exportRosterFile: () => ipcRenderer.invoke('roster:exportFile'),
   importRosterFile: () => ipcRenderer.invoke('roster:importFile'),
   regenerateSummary: (filename: string) => ipcRenderer.invoke('summary:regenerate', filename),
+  // 회의록 공유 — 클립보드는 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막힐 수
+  // 있어 메인 프로세스를 경유한다.
+  writeClipboard: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:write', text),
+  exportMeetingFile: (filename: string, format: ExportFormat): Promise<{ saved: boolean; path?: string }> =>
+    ipcRenderer.invoke('share:exportFile', filename, format),
+  shareMeetingToSlack: (filename: string, channelId: string): Promise<void> =>
+    ipcRenderer.invoke('share:sendSlack', filename, channelId),
   onTrayCommand: (cb: (cmd: string) => void) => {
     const listener = (_: unknown, cmd: string) => cb(cmd)
     ipcRenderer.on('tray:command', listener)

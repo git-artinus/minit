@@ -3,7 +3,7 @@ import { promisify } from 'node:util'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app, dialog, ipcMain, safeStorage, shell, type BrowserWindow } from 'electron'
+import { app, clipboard, dialog, ipcMain, safeStorage, shell, type BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { checkEnv, modelFilePath, resolveWhisperCli, systemCommandExists } from './env-check'
 import { downloadModel, modelUrl } from './model-download'
@@ -23,7 +23,7 @@ import {
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { listChannels, notifySlackForMeeting, resolveSlackChannelId } from './slack'
+import { buildPostMessageBody, listChannels, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
 import { deleteToken as deleteGithubToken, loadToken as loadGithubToken, saveToken as saveGithubToken } from './github/token-store'
@@ -48,7 +48,8 @@ import {
   shouldPull,
   syncMeeting
 } from './github/sync'
-import { isValidMeetingFilename, serializeMeeting } from '../shared/meeting-file'
+import { isValidMeetingFilename, parseMeeting, serializeMeeting } from '../shared/meeting-file'
+import { exportContent, exportFileName, type ExportFormat } from '../shared/share-format'
 import type {
   AppSettings,
   GithubLoginState,
@@ -749,4 +750,40 @@ export function registerIpc(
       return toAppSettings()
     }
   )
+
+  // ── 회의록 공유(수동) ──────────────────────────────────────────────────
+  // 저장 직후 자동 발송(notifySlackForMeeting)과 달리 사용자가 직접 누른 액션이므로 실패를
+  // 삼키지 않는다 — 예외를 그대로 렌더러로 올려 공유 모달이 사유를 표시한다.
+  const readMeetingFile = (filename: string): string => {
+    if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
+    return fs.readFileSync(path.join(settings.repoRoot, 'meetings', filename), 'utf-8')
+  }
+
+  ipcMain.handle('clipboard:write', (_e, text: string): void => {
+    if (typeof text !== 'string') throw new Error('invalid text')
+    clipboard.writeText(text)
+  })
+
+  ipcMain.handle(
+    'share:exportFile',
+    async (_e, filename: string, format: ExportFormat): Promise<{ saved: boolean; path?: string }> => {
+      if (format !== 'md' && format !== 'txt') throw new Error('invalid format')
+      const raw = readMeetingFile(filename)
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        defaultPath: exportFileName(filename, format),
+        filters: [{ name: format === 'md' ? 'Markdown' : 'Text', extensions: [format] }],
+      })
+      if (canceled || !filePath) return { saved: false }
+      fs.writeFileSync(filePath, exportContent(filename, raw, format))
+      return { saved: true, path: filePath }
+    }
+  )
+
+  ipcMain.handle('share:sendSlack', async (_e, filename: string, channelId: string): Promise<void> => {
+    if (typeof channelId !== 'string' || channelId.trim() === '') throw new Error('invalid channelId')
+    const token = loadSlackToken(configDir, { fs, safeStorage })
+    if (!token) throw new Error('Slack 봇 토큰이 등록되어 있지 않습니다')
+    const meeting = parseMeeting(filename, readMeetingFile(filename))
+    await postChatMessage(token, buildPostMessageBody(meeting, channelId), fetch)
+  })
 }
