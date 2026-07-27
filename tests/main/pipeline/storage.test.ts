@@ -2,8 +2,15 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { beforeEach, describe, expect, test } from 'vitest'
-import { isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from '../../../src/main/pipeline/storage'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import {
+  deleteMeeting,
+  isGitRepo,
+  loadMeetings,
+  pushPending,
+  saveMeeting,
+  systemGit
+} from '../../../src/main/pipeline/storage'
 import type { RunCommand } from '../../../src/main/pipeline/transcriber'
 
 // 실제 git 프로세스를 띄우지 않고 호출된 args만 기록하는 mock. autoSync 분기가
@@ -206,5 +213,127 @@ describe('loadMeetings', () => {
     const list = await loadMeetings(repo)
     expect(list).toHaveLength(1)
     expect(list[0].title).toBe('주간 스탠드업')
+  })
+})
+
+describe('deleteMeeting', () => {
+  // 실제 shell.trashItem 대신 "휴지통으로 옮겨져 워킹트리에서 사라진" 상태만 재현한다.
+  function fakeTrash(): { trash: (p: string) => Promise<void>; calls: string[] } {
+    const calls: string[] = []
+    return {
+      calls,
+      trash: async (p: string) => {
+        calls.push(p)
+        fs.rmSync(p)
+      }
+    }
+  }
+
+  async function seed(): Promise<string> {
+    const { filename } = await saveMeeting({
+      repoRoot: repo, meeting, startedAt: new Date('2026-07-20T10:30:00+09:00'),
+      git: systemGit(repo), autoSync: false
+    })
+    return filename
+  }
+
+  test('회의록을 휴지통으로 보내고 삭제를 커밋한다', async () => {
+    const filename = await seed()
+    const { trash, calls } = fakeTrash()
+
+    const result = await deleteMeeting({ repoRoot: repo, filename, git: systemGit(repo), autoSync: false, trash })
+
+    expect(result.deleted).toBe(true)
+    expect(calls).toEqual([path.join(repo, 'meetings', filename)])
+    expect(fs.existsSync(path.join(repo, 'meetings', filename))).toBe(false)
+    expect(execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo }).toString().trim()).toBe(
+      'docs(meetings): 주간 스탠드업 회의록 삭제'
+    )
+    // 삭제가 스테이징돼 커밋됐으므로 워킹트리에 잔여 변경이 없어야 한다.
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: repo }).toString()).toBe('')
+  })
+
+  test('autoSync=true면 push까지 시도한다', async () => {
+    const filename = await seed()
+    const { git, calls } = recordingGit()
+
+    await deleteMeeting({ repoRoot: repo, filename, git, autoSync: true, trash: fakeTrash().trash })
+
+    expect(calls.some((c) => c[0] === 'push')).toBe(true)
+  })
+
+  test('autoSync=false면 원격에 접촉하지 않는다', async () => {
+    const filename = await seed()
+    const { git, calls } = recordingGit()
+
+    await deleteMeeting({ repoRoot: repo, filename, git, autoSync: false, trash: fakeTrash().trash })
+
+    expect(calls.some((c) => c[0] === 'push' || c[0] === 'pull')).toBe(false)
+    expect(calls.some((c) => c[0] === 'commit')).toBe(true)
+  })
+
+  test('git 레포가 아니면 git 호출 없이 파일만 지운다', async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-plain-'))
+    try {
+      fs.mkdirSync(path.join(plain, 'meetings'))
+      fs.writeFileSync(path.join(plain, 'meetings', 'a.md'), '내용')
+      const { git, calls } = recordingGit()
+      const { trash } = fakeTrash()
+
+      const result = await deleteMeeting({ repoRoot: plain, filename: 'a.md', git, autoSync: true, trash })
+
+      expect(result).toEqual({ deleted: true, pushed: false })
+      expect(calls).toHaveLength(0)
+      expect(fs.existsSync(path.join(plain, 'meetings', 'a.md'))).toBe(false)
+    } finally {
+      fs.rmSync(plain, { recursive: true })
+    }
+  })
+
+  test('파일이 이미 없으면 휴지통·git 호출 없이 deleted=false로 끝낸다', async () => {
+    const { git, calls } = recordingGit()
+    const { trash, calls: trashCalls } = fakeTrash()
+
+    const result = await deleteMeeting({ repoRoot: repo, filename: 'ghost.md', git, autoSync: true, trash })
+
+    expect(result).toEqual({ deleted: false, pushed: false })
+    expect(trashCalls).toHaveLength(0)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('유효하지 않은 filename이면 아무것도 지우지 않고 throw한다', async () => {
+    const { git, calls } = recordingGit()
+    const { trash, calls: trashCalls } = fakeTrash()
+
+    await expect(
+      deleteMeeting({ repoRoot: repo, filename: '../settings.json', git, autoSync: false, trash })
+    ).rejects.toThrow()
+    expect(trashCalls).toHaveLength(0)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('git 커밋이 실패해도 삭제 자체는 성공으로 반환한다', async () => {
+    const filename = await seed()
+    const failingGit: RunCommand = async (_cmd, args) => {
+      if (args[0] === 'commit') throw new Error('nothing to commit')
+      return { stdout: '' }
+    }
+
+    const result = await deleteMeeting({ repoRoot: repo, filename, git: failingGit, autoSync: true, trash: fakeTrash().trash })
+
+    expect(result).toEqual({ deleted: true, pushed: false })
+    expect(fs.existsSync(path.join(repo, 'meetings', filename))).toBe(false)
+  })
+
+  test('휴지통 이동이 실패하면 git 단계로 넘어가지 않고 throw한다', async () => {
+    const filename = await seed()
+    const { git, calls } = recordingGit()
+    const trash = vi.fn(async () => {
+      throw new Error('권한 없음')
+    })
+
+    await expect(deleteMeeting({ repoRoot: repo, filename, git, autoSync: true, trash })).rejects.toThrow(/권한 없음/)
+    expect(calls).toHaveLength(0)
+    expect(fs.existsSync(path.join(repo, 'meetings', filename))).toBe(true)
   })
 })
