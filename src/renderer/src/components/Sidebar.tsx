@@ -5,6 +5,7 @@ import type { PipelineStage, PipelineStatus, Roster } from '../../../shared/type
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
 import { BrandLockup } from './BrandLogo'
+import { MeetingContextMenu } from './MeetingContextMenu'
 import { RecordingBar } from './RecordingBar'
 import { StartMeetingModal } from './StartMeetingModal'
 
@@ -13,9 +14,11 @@ export function Sidebar({
 }: {
   onOpenSettings: () => void
 }): React.JSX.Element {
-  const { meetings, selected, view, pipelines, select, startMeeting, stopMeeting, retryPipeline } = useMeetings()
+  const { meetings, selected, view, pipelines, select, deleteMeeting, startMeeting, stopMeeting, retryPipeline } =
+    useMeetings()
   const { ready } = useSetup()
   const [modalOpen, setModalOpen] = useState(false)
+  const [menu, setMenu] = useState<{ at: { x: number; y: number }; filename: string } | null>(null)
   const [filter, setFilter] = useState<MeetingFilter>({})
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [dir, setDir] = useState<'asc' | 'desc'>('desc')
@@ -162,6 +165,10 @@ export function Sidebar({
             key={m.filename}
             className={`meeting-card${m.filename === selected ? ' selected' : ''}`}
             onClick={() => select(m.filename)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setMenu({ at: { x: e.clientX, y: e.clientY }, filename: m.filename })
+            }}
           >
             <h3>{m.title}</h3>
             <div className="date">
@@ -172,6 +179,13 @@ export function Sidebar({
           </div>
         ))}
       </div>
+      {menu && (
+        <MeetingContextMenu
+          at={menu.at}
+          items={[{ label: '삭제', danger: true, onSelect: () => void deleteMeeting(menu.filename) }]}
+          onClose={() => setMenu(null)}
+        />
+      )}
       {modalOpen && (
         <StartMeetingModal
           knownParticipants={participants}

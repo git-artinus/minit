@@ -16,6 +16,7 @@ export interface MeetingsState {
 export interface MeetingsApi extends MeetingsState {
   refresh(): Promise<void>
   select(filename: string): void
+  deleteMeeting(filename: string): Promise<void>
   startMeeting(meta: MeetingMeta): Promise<void>
   stopMeeting(): Promise<void>
   retryPipeline(recordingId: string): Promise<void>
@@ -24,6 +25,7 @@ export interface MeetingsApi extends MeetingsState {
 type Action =
   | { type: 'loaded'; meetings: Meeting[] }
   | { type: 'select'; filename: string }
+  | { type: 'deselect' }
   | { type: 'view'; view: View }
   | { type: 'pipeline'; status: PipelineStatus }
 
@@ -33,6 +35,8 @@ function reducer(state: MeetingsState, a: Action): MeetingsState {
       return { ...state, meetings: a.meetings }
     case 'select':
       return { ...state, selected: a.filename }
+    case 'deselect':
+      return { ...state, selected: undefined }
     case 'view':
       return { ...state, view: a.view }
     case 'pipeline':
@@ -189,8 +193,17 @@ function useMeetingsInternal(): MeetingsApi {
     }
   }
 
+  // 확인 다이얼로그·파일 삭제·git·원격 정리는 모두 main이 한다(meetings:delete). 렌더러는 취소가
+  // 아닐 때 목록을 다시 읽고, 지워진 회의록이 열려 있었으면 상세 선택만 비운다.
+  const deleteMeeting = async (filename: string): Promise<void> => {
+    const { canceled } = await window.minuting.deleteMeeting(filename)
+    if (canceled) return
+    if (state.selected === filename) dispatch({ type: 'deselect' })
+    await refresh()
+  }
+
   const select = (filename: string): void => dispatch({ type: 'select', filename })
-  return { ...state, refresh, select, startMeeting, stopMeeting, retryPipeline }
+  return { ...state, refresh, select, deleteMeeting, startMeeting, stopMeeting, retryPipeline }
 }
 
 export function MeetingsProvider({ children }: { children: ReactNode }): React.JSX.Element {
