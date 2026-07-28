@@ -80,6 +80,22 @@ export function canInstallUpdate(state: { isRecording: boolean; runningPipelineC
   return { ok: true }
 }
 
+// 자동 확인 주기(#): 시작 직후 1회 → 이후 4시간마다. 기존에는 시작 시 1회가 전부여서 앱을
+// 켜둔 채로는 새 릴리즈가 나와도 영영 알 수 없었다(껐다 켜야만 확인됐다).
+export const STARTUP_CHECK_DELAY_MS = 3_000
+export const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+// 창을 다시 열 때도 확인하되, 여닫기를 반복해도 피드를 연타하지 않도록 최소 간격을 둔다.
+export const WINDOW_SHOW_MIN_INTERVAL_MS = 30 * 60 * 1000
+
+/**
+ * 마지막 확인 이후 최소 간격이 지났는지. lastCheckedAt=0은 "아직 확인한 적 없음"으로 본다.
+ * (GitHub pull 스로틀의 lastPulledAt과 같은 관례)
+ */
+export function shouldCheckNow(lastCheckedAt: number, now: number, minIntervalMs: number): boolean {
+  if (lastCheckedAt === 0) return true
+  return now - lastCheckedAt >= minIntervalMs
+}
+
 export function createUpdater(deps: UpdaterDeps): Updater {
   const { autoUpdater, isPackaged, onBeforeInstall } = deps
   // 수동(설정 버튼) 확인 후 사용자가 명시적으로 [업데이트]를 눌러야 다운로드·설치가 시작되도록

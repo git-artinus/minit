@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { expect, test, vi } from 'vitest'
-import { canInstallUpdate, classifyUpdateError, createUpdater, type AutoUpdaterLike } from '../../src/main/updater'
+import {
+  canInstallUpdate, classifyUpdateError, createUpdater, shouldCheckNow,
+  PERIODIC_CHECK_INTERVAL_MS, STARTUP_CHECK_DELAY_MS, WINDOW_SHOW_MIN_INTERVAL_MS,
+  type AutoUpdaterLike
+} from '../../src/main/updater'
 
 // 실제 electron-updater의 autoUpdater는 EventEmitter를 상속한다 — 테스트에서도 동일하게
 // EventEmitter 기반 페이크로 이벤트 기반 정규화 로직을 검증한다(electron-updater 자체는 주입 목).
@@ -199,4 +203,28 @@ test('classifyUpdateError: rate limit 오류는 feed_unreachable로 분류한다
 test('classifyUpdateError: 위 패턴에 해당하지 않는 오류는 other로 분류한다', () => {
   expect(classifyUpdateError(new Error('알 수 없는 파싱 오류'))).toBe('other')
   expect(classifyUpdateError('문자열 오류')).toBe('other')
+})
+
+// ── 자동 확인 스케줄(#) ──────────────────────────────────────────────────
+// 기존에는 시작 시 1회 확인이 전부라, 앱을 켜둔 채로는 새 릴리즈를 영영 알 수 없었다.
+
+test('한 번도 확인한 적 없으면(0) 즉시 확인한다', () => {
+  expect(shouldCheckNow(0, 1_000_000, WINDOW_SHOW_MIN_INTERVAL_MS)).toBe(true)
+})
+
+test('최소 간격이 지나지 않았으면 건너뛴다 — 창을 여닫아도 피드를 연타하지 않는다', () => {
+  const now = 1_000_000
+  expect(shouldCheckNow(now - 60_000, now, WINDOW_SHOW_MIN_INTERVAL_MS)).toBe(false)
+})
+
+test('최소 간격이 지났으면 다시 확인한다', () => {
+  const now = 1_000_000
+  expect(shouldCheckNow(now - WINDOW_SHOW_MIN_INTERVAL_MS, now, WINDOW_SHOW_MIN_INTERVAL_MS)).toBe(true)
+  expect(shouldCheckNow(now - WINDOW_SHOW_MIN_INTERVAL_MS - 1, now, WINDOW_SHOW_MIN_INTERVAL_MS)).toBe(true)
+})
+
+test('확인 주기 상수 — 기동 직후 3초, 이후 4시간, 창 열기 스로틀 30분', () => {
+  expect(STARTUP_CHECK_DELAY_MS).toBe(3_000)
+  expect(PERIODIC_CHECK_INTERVAL_MS).toBe(4 * 60 * 60 * 1000)
+  expect(WINDOW_SHOW_MIN_INTERVAL_MS).toBe(30 * 60 * 1000)
 })
