@@ -102,4 +102,16 @@ describe('toReleaseEntries', () => {
     const [entry] = toReleaseEntries([release({ body: null })])
     expect(entry.bodyMarkdown).toBe('')
   })
+
+  // toReleaseEntries가 selectPublished를 거치지 않게 바뀌면 draft·prerelease가 공개
+  // Changelog로 새어 나간다. 단일 원소 배열만 넘기는 위 테스트들로는 잡히지 않는다.
+  test('draft·prerelease를 걸러내고 발행일 내림차순으로 정렬한다', () => {
+    const list = [
+      release({ tag_name: 'v0.6.0', published_at: '2026-07-24T02:46:44Z' }),
+      release({ tag_name: 'v0.9.0-rc1', prerelease: true }),
+      release({ tag_name: 'v0.8.0', published_at: '2026-07-27T02:53:43Z' }),
+      release({ tag_name: 'v1.0.0', draft: true })
+    ]
+    expect(toReleaseEntries(list).map((e) => e.version)).toEqual(['0.8.0', '0.6.0'])
+  })
 })
