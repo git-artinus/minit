@@ -1,14 +1,67 @@
 ---
+import { fetchAllReleases, fetchLatestRelease } from '../lib/github'
+import { toDownload, toReleaseEntries } from '../lib/releases'
+import lockupLight from '../../../resources/brand/lockup-light.svg?raw'
+import lockupDark from '../../../resources/brand/lockup-dark.svg?raw'
+import '../styles/landing.css'
+
 const base = import.meta.env.BASE_URL
+// 실패 시 예외가 그대로 올라가 빌드를 실패시킨다 — 조용한 폴백을 두지 않는다.
+const download = toDownload(await fetchLatestRelease())
+const recent = toReleaseEntries(await fetchAllReleases()).slice(0, 3)
+
+// 릴리즈 노트 첫 줄이 한 줄 요약이라는 것이 .github/RELEASE_TEMPLATE.md 의 서식이다.
+const summarize = (md: string): string => md.split('\n').find((l) => l.trim() !== '') ?? ''
 ---
 
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <title>Minit</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Minit — 대면 회의를 위한 회의록 앱</title>
+    <meta name="description" content="녹음하면 회의 내용과 요약을 자동으로 작성합니다." />
+    <link rel="icon" href={`${base}favicon.svg`} />
   </head>
   <body>
-    <h1>Minit</h1>
-    <a href={`${base}docs/`}>문서</a>
+    <main>
+      <section class="hero">
+        <div class="lockup lockup-light" set:html={lockupLight} />
+        <div class="lockup lockup-dark" set:html={lockupDark} />
+
+        <h1>대면 회의를 위한 회의록 앱</h1>
+        <p class="lede">녹음하면 회의 내용과 요약을 자동으로 작성합니다.</p>
+
+        <a class="cta" href={download.url}>macOS용 다운로드</a>
+        <p class="cta-meta">
+          v{download.version} · Apple Silicon(M1 이상) 전용 · 약 {download.sizeMB}MB
+        </p>
+
+        <div class="shot" aria-hidden="true">
+          <!-- PR ②에서 실제 스크린샷으로 교체한다. <video>로 바꿀 수 있도록 컨테이너를 유지한다. -->
+        </div>
+      </section>
+
+      <section class="updates">
+        <h2>최근 업데이트</h2>
+        <ul>
+          {
+            recent.map((r) => (
+              <li>
+                <span class="ver">v{r.version}</span>
+                <span class="sum">{summarize(r.bodyMarkdown)}</span>
+                <time datetime={r.publishedAt}>{r.publishedAt}</time>
+              </li>
+            ))
+          }
+        </ul>
+        <a href={`${base}changelog/`}>전체 변경 이력 →</a>
+      </section>
+
+      <footer>
+        <a href="https://github.com/git-artinus/minit">GitHub</a>
+        <a href={`${base}docs/`}>문서</a>
+        <a href={`${base}changelog/`}>변경 이력</a>
+      </footer>
+    </main>
   </body>
 </html>
