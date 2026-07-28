@@ -1,12 +1,13 @@
 ---
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
-import { marked } from 'marked'
+import { renderReleaseBody } from '../lib/markdown'
 import { fetchAllReleases } from '../lib/github'
 import { toReleaseEntries } from '../lib/releases'
 
 const entries = toReleaseEntries(await fetchAllReleases())
 // 본문은 메인테이너가 작성한 릴리즈 노트다(.github/RELEASE_TEMPLATE.md 서식).
-const rendered = entries.map((e) => ({ ...e, html: marked.parse(e.bodyMarkdown) as string }))
+// renderReleaseBody가 marked 변환 후 sanitize까지 처리한다 — src/lib/markdown.ts 참고.
+const rendered = entries.map((e) => ({ ...e, html: renderReleaseBody(e.bodyMarkdown) }))
 ---
 
 <StarlightPage frontmatter={{ title: '변경 이력', tableOfContents: false }}>
