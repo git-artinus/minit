@@ -42,14 +42,13 @@ export function buildPrompt(typeDef: MeetingTypeDef, title: string, participants
 
 /**
  * claude가 exit 0으로 정상 종료했는데 출력이 JSON 스키마를 벗어난 경우.
- * 응답 원문을 발췌해 실어 보낸다 — 이걸 버리면 "왜 실패했는지"를 알 방법이 사라진다.
+ * 응답 원문을 그대로 실어 보낸다 — 이걸 버리면 "왜 실패했는지"를 알 방법이 사라진다.
+ * 절단은 여기서 하지 않는다(분류기가 앞뒤 보존·생략 고지 정책으로 일괄 처리한다).
  */
 export class InvalidOutputError extends Error {
-  readonly excerpt: string
-  constructor(stdout: string) {
+  constructor(readonly raw: string) {
     super('claude 응답에서 JSON을 찾지 못했다')
     this.name = 'InvalidOutputError'
-    this.excerpt = stdout.trim().slice(0, 300)
   }
 }
 
