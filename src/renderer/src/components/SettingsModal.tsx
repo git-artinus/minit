@@ -8,6 +8,7 @@ import type {
   UpdateProgress
 } from '../../../shared/types'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
+import { releaseNotesUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
 import { GithubConnectFlow } from './GithubConnectFlow'
@@ -612,6 +613,13 @@ export function SettingsModal(props: {
             {updateResult?.available && !updateDownloading && (
               <>
                 <span className="setting-desc">새 버전 v{updateResult.version}</span>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => window.minuting.openExternal(releaseNotesUrl(updateResult.version))}
+                >
+                  릴리즈 노트
+                </button>
                 <button type="button" className="btn-primary" onClick={startUpdateDownload}>
                   업데이트
                 </button>

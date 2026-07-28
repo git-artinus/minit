@@ -545,6 +545,13 @@ article li::before {
 }
 .update-banner-title { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); }
 
+/* 릴리즈 노트 링크 — 실제 이동은 openExternal이 하므로 button이지만 링크처럼 보이게 한다. */
+.link-btn {
+  align-self: flex-start; padding: 0; border: none; background: none;
+  color: var(--color-primary); font-size: var(--fs-xs); cursor: pointer;
+}
+.link-btn:hover { color: var(--color-primary-strong); text-decoration: underline; }
+
 /* 알림 토스트 — 우측 상단(update-banner)·우측 하단(setup-panel)을 피해 상단 중앙에 띄운다. */
 .toast-banner {
   position: fixed; top: var(--sp-5); left: 50%; transform: translateX(-50%); z-index: 46;
