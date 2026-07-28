@@ -16,7 +16,6 @@ import { runPipeline } from './pipeline/pipeline'
 import { transcribeAndRepair } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
 import { deleteMeeting, isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
-// claude CLI 호출 — 트랜스크립트를 stdin으로 넘긴다. pipeline:run과 summary:regenerate가 공유한다.
 import { runWithStdin } from './pipeline/claude-run'
 import { classifySummaryError } from './pipeline/summary-error'
 import { regenerateSummary } from './pipeline/regenerate'
@@ -530,7 +529,6 @@ export function registerIpc(
       git: systemGit(settings.repoRoot),
       autoSync: settings.autoPush,
     })
-    // 요약이 실제로 갱신됐을 때만 발송한다 — 실패한 회의를 다시 쏘지 않는다.
     if (!result.ok) return result
     // pipeline:run과 동일한 후처리 경로 — 요약이 갱신된 뒤에만 Slack 발송을 시도한다(실패 격리 동일).
     notifySlackForMeeting(
