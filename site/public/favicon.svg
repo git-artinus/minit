@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Minit · Concept 1 mark (two-tone) — 소리는 주황, 기록은 잉크 -->
+  <g stroke-width="6" stroke-linecap="round" fill="none">
+    <g stroke="#FF6B35">
+      <path d="M16 17 V25"/>
+      <path d="M24 11 V31"/>
+      <path d="M32 15 V27"/>
+      <path d="M40 12 V28"/>
+      <path d="M48 18 V24"/>
+    </g>
+    <g stroke="#1D1B17">
+      <path d="M16 38 H48"/>
+      <path d="M16 49 H36"/>
+    </g>
+  </g>
+</svg>

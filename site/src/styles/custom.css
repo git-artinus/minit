@@ -1,0 +1,8 @@
+@import '../../../resources/brand/tokens.css';
+
+/* Starlight 기본 팔레트를 Minit 토큰으로 덮는다 — 앱과 같은 색을 쓴다. */
+:root {
+  --sl-color-accent: var(--color-primary);
+  --sl-color-accent-high: var(--color-primary-strong);
+  --sl-color-text-accent: var(--color-primary-strong);
+}
