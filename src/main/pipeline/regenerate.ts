@@ -4,7 +4,7 @@ import { parseMeeting, serializeMeeting } from '../../shared/meeting-file'
 import type { Meeting, RegenerateResult } from '../../shared/types'
 import type { RunCommand } from './transcriber'
 import type { SummaryResult } from './summarizer'
-import { classifySummaryError } from './summary-error'
+import { classifyClaudeFailure } from './summary-error'
 import { isGitRepo, tryPullRebase } from './storage'
 
 export async function regenerateSummary(deps: {
@@ -28,7 +28,7 @@ export async function regenerateSummary(deps: {
   try {
     result = await deps.summarize(meeting)
   } catch (e) {
-    return { ok: false, failure: classifySummaryError(e) }
+    return { ok: false, failure: classifyClaudeFailure(e, '요약 재생성') }
   }
 
   const updated: Meeting = { ...meeting, ...result }
