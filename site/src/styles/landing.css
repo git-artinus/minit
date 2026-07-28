@@ -85,8 +85,7 @@ footer {
 }
 footer a { color: var(--color-text-muted); text-decoration: none; }
 
-@media (prefers-color-scheme: dark) {
-  :root { color-scheme: dark; }
-  .lockup-light { display: none; }
-  .lockup-dark { display: block; }
-}
+/* PR ①은 라이트 전용으로 렌더한다. tokens.css 의 다크 값이 [data-theme='dark'] 속성에
+   걸려 있는데 랜딩에는 그 속성을 세우는 것이 없으므로, 미디어쿼리로 로고만 바꾸면 배경은
+   라이트인 채 워드마크만 #F0EDE6(거의 흰색)이 되어 사라진다. 테마 대응은 스크린샷과
+   함께 PR ②에서 한 번에 처리한다. */
