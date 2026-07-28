@@ -32,8 +32,10 @@ export interface PipelineStatus {
   error?: { stage: PipelineStage; message: string }
   filename?: string  // saving 이후 채워짐
 }
+// claude는 여기 없다(#8) — `which claude`가 증명하는 "설치됨"을 화면이 "쓸 수 있음"으로 읽는 것이
+// 이 이슈의 원인이었다. 사용 가능 여부는 ClaudeStatus 하나만 말한다(main/claude-status.ts).
 export interface EnvReport {
-  git: boolean; claude: boolean; whisper: boolean; model: boolean; repoRoot: string
+  git: boolean; whisper: boolean; model: boolean; repoRoot: string
 }
 // 요약 실패 사유(#8) — claude CLI는 런타임 오류를 stdout에 쓰고 non-zero로 끝난다. 종료 코드만으론
 // 원인을 가릴 수 없어 spawn 오류 코드·종료 시그널·stdout/stderr 텍스트를 함께 본다. 분류는 main에서만
@@ -52,6 +54,13 @@ export interface SummaryFailure {
   // e.message가 그대로 오므로 runWithStdin이 항상 감싸는다는 규약에 의존한다.
   detail: string
 }
+/**
+ * claude CLI가 "지금 요약을 만들 수 있는 상태인가"(#8). EnvReport.claude와 별개 값인 이유는
+ * 증명 범위와 비용이 다르기 때문이다 — `which claude`는 설치만 증명하고 즉시·무료지만, 로그인·
+ * 사용량은 실제로 한 번 실행해 봐야만 알 수 있고 수 초가 걸리며 사용자의 사용량을 소모한다.
+ * 하나로 합치면 환경 재검사 때마다 사용량이 나간다.
+ */
+export type ClaudeStatus = { ok: true } | { ok: false; failure: SummaryFailure }
 /**
  * 요약 재생성 결과. 예상된 실패(claude)는 예외가 아니라 반환값으로 표현한다 —
  * ipcMain.handle이 예외를 renderer로 넘길 때 message만 남기고 커스텀 프로퍼티를 잃기 때문이다.

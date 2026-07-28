@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import type { EnvReport } from '../../../shared/types'
+import type { ClaudeStatus, EnvReport } from '../../../shared/types'
 import { deriveSetupState, isEnvReady, type SetupProgress, type SetupView } from './setup-logic'
 
 export interface SetupApi {
@@ -9,6 +9,13 @@ export interface SetupApi {
   /** 환경 검사 자체가 실패한 경우. 삼키면 "확인 중…"이 영구 표시되거나 낡은 값이 신뢰된다. */
   envError: string | null
   rechecking: boolean
+  /** claude 사전 확인 결과(#8). null=아직 확인 중. 설치 여부가 아니라 실제 실행 결과다. */
+  claude: ClaudeStatus | null
+  /** 확인 호출 자체가 실패한 경우(IPC 오류 등) — 판정 실패(status.ok=false)와는 다르다. */
+  claudeError: string | null
+  claudeChecking: boolean
+  /** claude를 다시 실행해 상태를 새로 확인한다. 사용량을 쓰므로 사용자가 누를 때만 호출한다. */
+  recheckClaude: () => Promise<void>
   ready: boolean
   minimized: boolean
   setMinimized: (m: boolean) => void
@@ -28,6 +35,9 @@ function useSetupInternal(): SetupApi {
   const [error, setError] = useState<string | null>(null)
   const [envError, setEnvError] = useState<string | null>(null)
   const [rechecking, setRechecking] = useState(false)
+  const [claude, setClaude] = useState<ClaudeStatus | null>(null)
+  const [claudeError, setClaudeError] = useState<string | null>(null)
+  const [claudeChecking, setClaudeChecking] = useState(false)
   const [minimized, setMinimized] = useState(false)
 
   const recheck = useCallback(async (): Promise<void> => {
@@ -43,9 +53,27 @@ function useSetupInternal(): SetupApi {
     }
   }, [])
 
+  const checkClaude = useCallback(async (force: boolean): Promise<void> => {
+    setClaudeChecking(true)
+    setClaudeError(null)
+    try {
+      setClaude(await window.minuting.checkClaudeStatus(force))
+    } catch (e) {
+      setClaudeError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setClaudeChecking(false)
+    }
+  }, [])
+
+  const recheckClaude = useCallback((): Promise<void> => checkClaude(true), [checkClaude])
+
   useEffect(() => {
     recheck()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회만 확인한다(recheck는 useCallback으로 안정적이라 재실행되지 않지만 명시적으로 []로 의도를 남긴다).
+    // 실행마다 1회. main이 결과를 캐시하므로 이 호출이 곧 그 1회이고, 이후 화면들은 캐시를 읽는다.
+    // 요약 실패 시점이 아니라 지금 알려주는 게 이 검사의 존재 이유다(#8) — 회의를 마치고 나서야
+    // "로그인이 안 돼 있었다"를 알면 그 회의의 요약은 이미 못 만든 뒤다.
+    checkClaude(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회만 확인한다(recheck·checkClaude는 useCallback으로 안정적이라 재실행되지 않지만 명시적으로 []로 의도를 남긴다).
   }, [])
 
   const download = useCallback(async (): Promise<void> => {
@@ -65,10 +93,14 @@ function useSetupInternal(): SetupApi {
   const expand = useCallback((): void => setMinimized(false), [])
 
   return {
-    view: deriveSetupState(env, progress, error),
+    view: deriveSetupState(env, claude, progress, error),
     env,
     envError,
     rechecking,
+    claude,
+    claudeError,
+    claudeChecking,
+    recheckClaude,
     ready: isEnvReady(env),
     minimized,
     setMinimized,

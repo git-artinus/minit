@@ -1,5 +1,6 @@
 import { BrandMark } from './BrandLogo'
 import { useSetup } from '../state/setup'
+import { claudeStatusView } from '../state/claude-status-view'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 
 const WHISPER_HINT =
@@ -15,22 +16,24 @@ function panelTitle(kind: string): string {
       return '음성 인식 준비 실패'
     case 'checking':
       return '환경 확인 중'
-    case 'claude-missing':
-      return '요약 기능을 쓰려면 Claude CLI가 필요합니다'
     default:
       return '음성 인식 준비'
   }
 }
 
 export function SetupPanel(): React.JSX.Element | null {
-  const { view, minimized, setMinimized, recheck, download, envError } = useSetup()
+  const { view, minimized, setMinimized, recheck, download, envError, recheckClaude, claudeChecking, claudeError } =
+    useSetup()
   if (view.kind === 'hidden') return null
+  // 제목과 본문이 같은 판정을 써야 한다 — 따로 계산하면 미설치 제목 아래 로그인 안내가 뜰 수 있다.
+  // 미설치·미로그인·사용량 소진은 해야 할 일이 서로 달라 제목부터 갈라진다.
+  const claudeCard = view.kind === 'claude-unavailable' ? claudeStatusView({ ok: false, failure: view.failure }) : null
 
   return (
     <div className="setup-panel">
       <div className="setup-panel-header">
         <BrandMark size={16} />
-        <span className="setup-panel-title">{panelTitle(view.kind)}</span>
+        <span className="setup-panel-title">{claudeCard?.title ?? panelTitle(view.kind)}</span>
         <button
           type="button"
           className="icon-btn"
@@ -122,23 +125,35 @@ export function SetupPanel(): React.JSX.Element | null {
             </>
           )}
 
-          {/* 비차단 안내 — claude가 없어도 녹음·받아쓰기는 되므로 회의 시작을 막지 않는다. */}
-          {view.kind === 'claude-missing' && (
+          {/* 비차단 안내 — claude를 못 써도 녹음·받아쓰기는 되므로 회의 시작을 막지 않는다. */}
+          {view.kind === 'claude-unavailable' && claudeCard && (
             <>
               <p className="env-desc">{CLAUDE_DEPENDENCY_NOTICE}</p>
-              <p className="env-desc">터미널에서 아래를 실행해 설치한 뒤 [다시 확인]을 누르세요.</p>
-              <div className="setting-path">{CLAUDE_INSTALL_COMMAND}</div>
+              <p className="env-desc">{claudeCard.hint}</p>
+              {claudeCard.showInstall && <div className="setting-path">{CLAUDE_INSTALL_COMMAND}</div>}
+              {/* 사유를 특정하지 못했을 때만 원문을 보여준다 — 원인을 아는 경우엔 소음일 뿐이다. */}
+              {claudeCard.showDetail && <p className="env-error">{view.failure.detail}</p>}
+              {claudeError !== null && <p className="env-error">확인 실패: {claudeError}</p>}
               <div className="setting-path-row">
-                <button type="button" className="btn-primary" onClick={recheck}>
-                  다시 확인
-                </button>
                 <button
                   type="button"
-                  className="btn-ghost"
-                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
+                  className="btn-primary"
+                  onClick={() => {
+                    recheckClaude().catch(() => {})
+                  }}
+                  disabled={claudeChecking}
                 >
-                  설치 문서 열기
+                  {claudeChecking ? '확인 중…' : '다시 확인'}
                 </button>
+                {claudeCard.showInstall && (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
+                  >
+                    설치 문서 열기
+                  </button>
+                )}
               </div>
             </>
           )}

@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AppSettings,
   AutoCheckStatus,
+  ClaudeStatus,
   GithubLoginState,
   GithubLoginStatusEvent,
   RegenerateResult,
@@ -19,6 +20,10 @@ const api = {}
 
 const minutingApi = {
   checkEnv: () => ipcRenderer.invoke('env:check'),
+  // force=true는 캐시를 무시하고 claude를 다시 실행한다(사용량을 쓰므로 사용자가 [다시 확인]을
+  // 누를 때만 넘긴다).
+  checkClaudeStatus: (force = false): Promise<ClaudeStatus> =>
+    ipcRenderer.invoke('claude:status', force),
   ensureModel: () => ipcRenderer.invoke('model:ensure'),
   onModelProgress: (cb: (r: number, t: number) => void) => {
     const listener = (_: unknown, r: number, t: number) => cb(r, t)
