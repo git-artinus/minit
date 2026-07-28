@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 사용법 문서
+    url: https://git-artinus.github.io/minit/docs/
+    about: 설치·설정·문제 해결은 문서를 먼저 확인해 주세요
+  - name: 보안 취약점 제보
+    url: https://github.com/git-artinus/minit/security/advisories/new
+    about: 토큰·녹음 관련 취약점은 공개 이슈가 아니라 이 경로로 알려주세요
