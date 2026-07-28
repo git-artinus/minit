@@ -545,12 +545,15 @@ article li::before {
 }
 .update-banner-title { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); }
 
-/* 릴리즈 노트 링크 — 실제 이동은 openExternal이 하므로 button이지만 링크처럼 보이게 한다. */
+/* 링크형 버튼(배너·설정 공용) — 실제 이동은 openExternal이 하므로 button이지만 링크처럼 보이게 한다. */
 .link-btn {
-  align-self: flex-start; padding: 0; border: none; background: none;
+  padding: 0; border: none; background: none;
   color: var(--color-primary); font-size: var(--fs-xs); cursor: pointer;
 }
 .link-btn:hover { color: var(--color-primary-strong); text-decoration: underline; }
+/* 컨테이너 의존 속성은 배너(flex-column)에만 준다 — 범용 클래스에 두면 setting-path-row의
+   align-items: center를 덮어 32px 버튼들과 세로 정렬이 어긋난다. */
+.update-banner .link-btn { align-self: flex-start; }
 
 /* 알림 토스트 — 우측 상단(update-banner)·우측 하단(setup-panel)을 피해 상단 중앙에 띄운다. */
 .toast-banner {

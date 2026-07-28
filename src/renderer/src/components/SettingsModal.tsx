@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   AppSettings,
+  AutoCheckStatus,
   GithubLoginState,
   SlackChannel,
   SlackTokenState,
@@ -18,6 +19,9 @@ import { SlackChannelSelect } from './SlackChannelSelect'
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
+
+// 한두 번은 오프라인·일시 오류로 흔하다 — 반복될 때만 알린다(4시간 주기이므로 3회는 반나절 이상).
+const AUTO_CHECK_WARN_AFTER = 3
 
 // 설치 가드 오류(리뷰 Fix Critical) — main의 update:download가 canInstallUpdate 결과로 던진
 // 오류 코드를 사용자 문구로 옮긴다. UpdateBanner와 동일한 매핑을 공유한다.
@@ -49,6 +53,7 @@ export function SettingsModal(props: {
   const [updateDownloading, setUpdateDownloading] = useState(false)
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [autoCheckStatus, setAutoCheckStatus] = useState<AutoCheckStatus | null>(null)
 
   // Slack — 토큰(암호화 저장, 원문은 절대 렌더러로 오지 않는다)·채널 선택(v0.4.0 ②)
   const [slackToken, setSlackToken] = useState<SlackTokenState | null>(null)
@@ -87,6 +92,8 @@ export function SettingsModal(props: {
     setUpdateError(null)
     setInstallCopied(false)
     setCopyError(null)
+    setAutoCheckStatus(null)
+    window.minuting.getAutoCheckStatus().then(setAutoCheckStatus).catch(() => {})
     window.minuting.getSettings().then(setSettings).catch(() => {})
     window.minuting.getAppVersion().then(setVersion).catch(() => {})
     window.minuting.getGithubLoginState().then(setGithub).catch(() => {})
@@ -616,7 +623,9 @@ export function SettingsModal(props: {
                 <button
                   type="button"
                   className="link-btn"
-                  onClick={() => window.minuting.openExternal(releaseNotesUrl(updateResult.version))}
+                  onClick={() =>
+                    window.minuting.openExternal(releaseNotesUrl(updateResult.version)).catch(() => {})
+                  }
                 >
                   릴리즈 노트
                 </button>
@@ -647,6 +656,21 @@ export function SettingsModal(props: {
             </p>
           )}
           {updateError && <p className="setting-error">{updateError}</p>}
+          {/* 자동 확인이 계속 실패하면 사용자는 구버전에 고립된 채 아무 신호도 못 받는다 —
+              이 앱의 유일한 배포 채널이 업데이터라 직접 받을 경로를 알려준다. */}
+          {autoCheckStatus !== null && autoCheckStatus.consecutiveFailures >= AUTO_CHECK_WARN_AFTER && (
+            <p className="setting-error">
+              자동 업데이트 확인이 {autoCheckStatus.consecutiveFailures}회 연속 실패했습니다
+              {autoCheckStatus.lastSuccessAt === 0 ? ' (이번 실행에서 성공한 적 없음)' : ''}.{' '}
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => window.minuting.openExternal(releaseNotesUrl()).catch(() => {})}
+              >
+                릴리즈 페이지에서 직접 받기
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>
