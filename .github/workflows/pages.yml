@@ -19,7 +19,11 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # 진행 중인 배포를 죽이지 않고 큐에 쌓는다. GitHub 공식 Pages 스타터
+  # 워크플로(actions/starter-workflows/pages/static.yml)가 같은 이유로 false를
+  # 쓴다 — push 배포가 도는 중에 release:published 가 겹치면 true는 배포를
+  # 중간에 끊어 Pages를 부분 상태로 남길 수 있다.
+  cancel-in-progress: false
 
 jobs:
   build:
