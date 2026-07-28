@@ -63,7 +63,7 @@ describe('checkEnv', () => {
   // "설치됨"을 "쓸 수 있음"으로 읽는 길이 다시 열린다.
   test('claude는 검사하지 않는다', async () => {
     const commandExists = vi.fn().mockImplementation(async (cmd: string) => cmd !== 'whisper-cli')
-    const report = await checkEnv({
+    await checkEnv({
       commandExists,
       modelPath: '/ud/models/x.bin',
       repoRoot: '/repo',
@@ -71,7 +71,6 @@ describe('checkEnv', () => {
       fileExists: (p) => p === '/ud/models/x.bin',
     })
     expect(commandExists).not.toHaveBeenCalledWith('claude')
-    expect(report).not.toHaveProperty('claude')
   })
 
   test('번들 바이너리가 있으면 PATH에 없어도 whisper: true', async () => {

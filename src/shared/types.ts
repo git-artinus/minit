@@ -55,12 +55,18 @@ export interface SummaryFailure {
   detail: string
 }
 /**
- * claude CLI가 "지금 요약을 만들 수 있는 상태인가"(#8). EnvReport.claude와 별개 값인 이유는
+ * claude CLI가 "지금 요약을 만들 수 있는 상태인가"(#8). EnvReport에 claude가 없는 이유는
  * 증명 범위와 비용이 다르기 때문이다 — `which claude`는 설치만 증명하고 즉시·무료지만, 로그인·
  * 사용량은 실제로 한 번 실행해 봐야만 알 수 있고 수 초가 걸리며 사용자의 사용량을 소모한다.
- * 하나로 합치면 환경 재검사 때마다 사용량이 나간다.
+ *
+ * undetermined를 unavailable과 반드시 나눈다. "못 쓴다"는 사용자가 할 일이 있다는 뜻이고
+ * "판정 못 했다"는 없다는 뜻인데, 둘을 한 값으로 뭉개면 콜드 스타트 한 번이 느렸다는 이유로
+ * 멀쩡한 CLI에 상시 경고가 붙는다. 캐시에 남길지, 안내 카드를 띄울지가 여기서 갈린다.
  */
-export type ClaudeStatus = { ok: true } | { ok: false; failure: SummaryFailure }
+export type ClaudeStatus =
+  | { kind: 'available' }
+  | { kind: 'unavailable'; failure: SummaryFailure }
+  | { kind: 'undetermined'; failure: SummaryFailure }
 /**
  * 요약 재생성 결과. 예상된 실패(claude)는 예외가 아니라 반환값으로 표현한다 —
  * ipcMain.handle이 예외를 renderer로 넘길 때 message만 남기고 커스텀 프로퍼티를 잃기 때문이다.

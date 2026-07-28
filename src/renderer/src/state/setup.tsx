@@ -11,10 +11,10 @@ export interface SetupApi {
   rechecking: boolean
   /** claude 사전 확인 결과(#8). null=아직 확인 중. 설치 여부가 아니라 실제 실행 결과다. */
   claude: ClaudeStatus | null
-  /** 확인 호출 자체가 실패한 경우(IPC 오류 등) — 판정 실패(status.ok=false)와는 다르다. */
+  /** 확인 호출 자체가 실패한 경우(IPC 오류 등) — "못 쓴다"는 판정을 받은 것과는 다르다. */
   claudeError: string | null
   claudeChecking: boolean
-  /** claude를 다시 실행해 상태를 새로 확인한다. 사용량을 쓰므로 사용자가 누를 때만 호출한다. */
+  /** claude를 다시 실행해 상태를 새로 확인한다(캐시 무시). */
   recheckClaude: () => Promise<void>
   ready: boolean
   minimized: boolean
@@ -74,6 +74,12 @@ function useSetupInternal(): SetupApi {
     // "로그인이 안 돼 있었다"를 알면 그 회의의 요약은 이미 못 만든 뒤다.
     checkClaude(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회만 확인한다(recheck·checkClaude는 useCallback으로 안정적이라 재실행되지 않지만 명시적으로 []로 의도를 남긴다).
+  }, [])
+
+  // 확인은 위에서 1회뿐이고 [다시 확인]은 사용자가 눌러야 한다. 이 구독이 없으면 회의 요약이
+  // 로그인 문제로 실패해 main이 사실을 알게 돼도 화면은 앱 실행 시점의 값에 머문다.
+  useEffect(() => {
+    return window.minuting.onClaudeStatus(setClaude)
   }, [])
 
   const download = useCallback(async (): Promise<void> => {

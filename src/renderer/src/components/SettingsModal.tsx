@@ -335,9 +335,11 @@ export function SettingsModal(props: {
           <div className="setting-desc">{CLAUDE_DEPENDENCY_NOTICE}</div>
           <div className="setting-path-row">
             {/* "연결됨"(GitHub 섹션의 어휘)을 쓰지 않는다 — 저쪽은 앱이 쥔 토큰 상태고 이쪽은
-                기기의 CLI가 지금 응답하는지다. 같은 말로 묶으면 서로 다른 것을 같게 읽는다. */}
+                기기의 CLI가 지금 응답하는지다. 같은 말로 묶으면 서로 다른 것을 같게 읽는다.
+                재확인이 실패해도 직전 판정을 라벨로 유지한다. '확인 실패'로 덮으면 아래 조치
+                안내(직전 판정 기준)와 출처가 갈려 라벨은 모른다고, 본문은 안다고 말하게 된다. */}
             <div className="setting-desc">
-              {claudeError !== null ? '확인 실패' : claudeStatus === null ? '확인 중…' : claudeStatus.label}
+              {claudeStatus !== null ? claudeStatus.label : claudeError !== null ? '확인 실패' : '확인 중…'}
             </div>
             <button
               type="button"
@@ -351,9 +353,14 @@ export function SettingsModal(props: {
             </button>
           </div>
           {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
-          {claudeError !== null && <p className="setting-error">상태 확인 실패: {claudeError}</p>}
+          {claudeError !== null && (
+            <p className="setting-error">
+              상태 확인 실패: {claudeError}
+              {claudeStatus !== null && ' (아래는 직전 확인 결과입니다)'}
+            </p>
+          )}
 
-          {claudeStatus !== null && claudeStatus.hint !== '' && (
+          {claudeStatus !== null && claudeStatus.hint !== null && (
             <div className="setting-desc">{claudeStatus.hint}</div>
           )}
 
@@ -378,11 +385,9 @@ export function SettingsModal(props: {
             </>
           )}
 
-          {/* 사유를 특정하지 못한 경우에만 원문을 노출한다. 이게 없으면 '확인 실패'가 무엇 때문인지
-              알 방법이 렌더러 어디에도 남지 않는다(패키징된 앱은 콘솔을 볼 수 없다). */}
-          {claude !== null && !claude.ok && claudeStatus?.showDetail && (
-            <p className="setting-error">{claude.failure.detail}</p>
-          )}
+          {/* 사유를 특정하지 못한 경우에만 원문이 실려 온다. 이게 없으면 '확인 실패'가 무엇
+              때문인지 알 방법이 렌더러 어디에도 남지 않는다(패키징된 앱은 콘솔을 볼 수 없다). */}
+          {claudeStatus?.detail != null && <p className="setting-error">{claudeStatus.detail}</p>}
         </div>
 
         <div className="setting-row">

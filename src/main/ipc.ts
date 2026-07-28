@@ -170,8 +170,14 @@ export function registerIpc(
 
   // env:check와 분리한다 — which는 즉시 끝나지만 이건 claude를 실제로 실행해 사용량을 쓴다.
   // 같은 핸들러에 넣으면 환경 재검사(모델 다운로드 후 등)마다 사용량이 나간다.
-  const claudeStatus = createClaudeStatusChecker(() =>
-    probeClaude({ commandExists: systemCommandExists, run: runWithStdin }))
+  const claudeStatus = createClaudeStatusChecker(
+    () => probeClaude({ commandExists: systemCommandExists, run: runWithStdin }),
+    // 조회는 앱 실행 시 1회뿐이고 [다시 확인]은 캐시를 우회한다. 이 통지가 없으면 요약 실행이
+    // 알아낸 사실이 main에만 남아, 요약이 로그인 문제로 실패했는데 설정 화면은 계속
+    // "사용 가능"이라고 말하게 된다.
+    (status) => {
+      if (!win.isDestroyed()) win.webContents.send('claude:status-changed', status)
+    })
   ipcMain.handle('claude:status', (_e, force: boolean) => claudeStatus.get(force === true))
 
   ipcMain.handle('model:ensure', () =>
@@ -343,7 +349,7 @@ export function registerIpc(
               participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
             })
             // 방금 요약이 됐다는 건 claude가 사용 가능하다는 뜻이다 — 프로브를 다시 돌릴 이유가 없다.
-            claudeStatus.record(availabilityEvidence(null))
+            claudeStatus.record({ kind: 'available' })
             return result
           } catch (e) {
             // 최초 요약도 같은 분류기를 통과시킨다. 이 경로가 실패 빈도가 가장 높은데, 그냥 던지면
@@ -546,7 +552,7 @@ export function registerIpc(
       autoSync: settings.autoPush,
     })
     // 재생성은 claude를 실제로 돌린 결과라 프로브보다 확실한 증거다(성공·실패 양쪽 모두).
-    claudeStatus.record(availabilityEvidence(result.ok ? null : result.failure))
+    claudeStatus.record(result.ok ? { kind: 'available' } : availabilityEvidence(result.failure))
     if (!result.ok) return result
     // pipeline:run과 동일한 후처리 경로 — 요약이 갱신된 뒤에만 Slack 발송을 시도한다(실패 격리 동일).
     notifySlackForMeeting(

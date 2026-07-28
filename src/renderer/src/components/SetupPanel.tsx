@@ -27,7 +27,10 @@ export function SetupPanel(): React.JSX.Element | null {
   if (view.kind === 'hidden') return null
   // 제목과 본문이 같은 판정을 써야 한다 — 따로 계산하면 미설치 제목 아래 로그인 안내가 뜰 수 있다.
   // 미설치·미로그인·사용량 소진은 해야 할 일이 서로 달라 제목부터 갈라진다.
-  const claudeCard = view.kind === 'claude-unavailable' ? claudeStatusView({ ok: false, failure: view.failure }) : null
+  const claudeCard =
+    view.kind === 'claude-unavailable'
+      ? claudeStatusView({ kind: 'unavailable', failure: view.failure })
+      : null
 
   return (
     <div className="setup-panel">
@@ -129,11 +132,13 @@ export function SetupPanel(): React.JSX.Element | null {
           {view.kind === 'claude-unavailable' && claudeCard && (
             <>
               <p className="env-desc">{CLAUDE_DEPENDENCY_NOTICE}</p>
-              <p className="env-desc">{claudeCard.hint}</p>
+              {claudeCard.hint !== null && <p className="env-desc">{claudeCard.hint}</p>}
               {claudeCard.showInstall && <div className="setting-path">{CLAUDE_INSTALL_COMMAND}</div>}
-              {/* 사유를 특정하지 못했을 때만 원문을 보여준다 — 원인을 아는 경우엔 소음일 뿐이다. */}
-              {claudeCard.showDetail && <p className="env-error">{view.failure.detail}</p>}
-              {claudeError !== null && <p className="env-error">확인 실패: {claudeError}</p>}
+              {claudeCard.detail !== null && <p className="env-error">{claudeCard.detail}</p>}
+              {/* 재확인이 실패한 경우. 위 안내는 직전 확인 결과이므로 그대로 두고 사실만 덧붙인다. */}
+              {claudeError !== null && (
+                <p className="env-error">상태 확인 실패: {claudeError} (위는 직전 확인 결과입니다)</p>
+              )}
               <div className="setting-path-row">
                 <button
                   type="button"

@@ -50,7 +50,7 @@ function summarizeCause(run: ClaudeRunFacts): string {
   return run.exitCode !== null ? `exit ${run.exitCode}` : '원인 불명'
 }
 
-// timeoutMs는 테스트에서만 주입한다(300초를 기다리지 않고 타임아웃 경로를 검증하기 위함).
+// timeoutMs는 호출자가 용도에 맞게 지정한다(요약 300초 · 상태 확인 60초). 기본값은 요약 기준이다.
 export const runWithStdin: RunWithStdin = (cmd, args, stdin, timeoutMs = SUMMARY_TIMEOUT_MS) =>
   new Promise((resolve, reject) => {
     const child = execFile(

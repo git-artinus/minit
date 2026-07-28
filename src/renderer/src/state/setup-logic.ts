@@ -32,6 +32,10 @@ export function isEnvReady(env: EnvReport | null): boolean {
  * claude 안내는 모델 준비가 끝난 뒤에만 노출한다 — 더 급한 안내를 가리지 않기 위함이다.
  * claude=null(아직 확인 중)이면 아무 말도 하지 않는다. 비차단 기능이라 "확인 중" 카드를 띄우면
  * 앱을 켤 때마다 아무 조치도 필요 없는 안내가 몇 초씩 깜빡인다.
+ *
+ * undetermined도 카드를 띄우지 않는다. 사용자가 할 수 있는 일이 없는데 경고만 남기 때문이다 —
+ * 콜드 스타트가 느려 프로브가 한 번 타임아웃하면 세션 내내 거짓 경고가 붙는다.
+ * 확인 실패 사실은 설정 화면이 재시도 버튼과 함께 표시한다.
  */
 export function deriveSetupState(
   env: EnvReport | null,
@@ -46,6 +50,6 @@ export function deriveSetupState(
     if (progress) return { kind: 'downloading', progress }
     return { kind: 'needs-model' }
   }
-  if (claude !== null && !claude.ok) return { kind: 'claude-unavailable', failure: claude.failure }
+  if (claude?.kind === 'unavailable') return { kind: 'claude-unavailable', failure: claude.failure }
   return { kind: 'hidden' }
 }

@@ -20,10 +20,20 @@ const api = {}
 
 const minutingApi = {
   checkEnv: () => ipcRenderer.invoke('env:check'),
-  // force=true는 캐시를 무시하고 claude를 다시 실행한다(사용량을 쓰므로 사용자가 [다시 확인]을
-  // 누를 때만 넘긴다).
+  // 계약(캐시·force·사용량)은 main의 ClaudeStatusChecker.get이 원본이다.
   checkClaudeStatus: (force = false): Promise<ClaudeStatus> =>
     ipcRenderer.invoke('claude:status', force),
+  // 실제 요약 실행이 알아낸 판정. 조회는 앱 실행 시 1회뿐이라 이 통지가 없으면 세션 중에
+  // 상태가 바뀌어도 화면이 따라오지 못한다.
+  // 반환 타입을 () => void로 못박는다 — removeListener는 IpcRenderer를 반환해서, 그대로
+  // 흘리면 useEffect의 cleanup 자리에 쓸 수 없다.
+  onClaudeStatus: (cb: (s: ClaudeStatus) => void): (() => void) => {
+    const listener = (_: unknown, s: ClaudeStatus): void => cb(s)
+    ipcRenderer.on('claude:status-changed', listener)
+    return () => {
+      ipcRenderer.removeListener('claude:status-changed', listener)
+    }
+  },
   ensureModel: () => ipcRenderer.invoke('model:ensure'),
   onModelProgress: (cb: (r: number, t: number) => void) => {
     const listener = (_: unknown, r: number, t: number) => cb(r, t)

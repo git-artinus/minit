@@ -7,10 +7,10 @@ function env(partial: Partial<EnvReport>): EnvReport {
 }
 
 function unavailable(reason: SummaryFailureReason): ClaudeStatus {
-  return { ok: false, failure: { reason, detail: '원인 원문' } }
+  return { kind: 'unavailable', failure: { reason, detail: '원인 원문' } }
 }
 
-const READY: ClaudeStatus = { ok: true }
+const READY: ClaudeStatus = { kind: 'available' }
 
 describe('isEnvReady', () => {
   test('env를 아직 확인하지 못했으면(null) false', () => {
@@ -83,6 +83,18 @@ describe('deriveSetupState', () => {
   // 필요 없는 안내가 실행할 때마다 깜빡인다.
   test('claude 상태를 아직 모르면(null) 안내하지 않고 hidden', () => {
     expect(deriveSetupState(env({ whisper: true, model: true }), null, null, null)).toEqual({
+      kind: 'hidden'
+    })
+  })
+
+  // 콜드 스타트가 느려 프로브가 한 번 타임아웃한 것으로 세션 내내 경고를 띄우면 안 된다.
+  // 사용자가 할 수 있는 일이 없는 상태라 카드는 소음이다(설정 화면이 '확인 실패'로 알린다).
+  test('판정을 못 한 상태(undetermined)는 카드를 띄우지 않는다', () => {
+    const undetermined: ClaudeStatus = {
+      kind: 'undetermined',
+      failure: { reason: 'timeout', detail: '원인 원문' }
+    }
+    expect(deriveSetupState(env({ whisper: true, model: true }), undetermined, null, null)).toEqual({
       kind: 'hidden'
     })
   })

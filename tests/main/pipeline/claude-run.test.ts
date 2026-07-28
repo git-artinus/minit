@@ -46,6 +46,13 @@ describe('runWithStdin', () => {
     expect(stdout).toHaveLength(BIG_STDIN.length)
   })
 
+  // 상태 확인 프로브가 쓰는 조합이다(빈 stdin + stdin을 읽지 않는 자식). 성공 판정이
+  // writableFinished에 달려 있어, 빈 입력을 "끝까지 못 넘겼다"로 보면 프로브만 전수 실패한다.
+  test('빈 stdin은 자식이 읽지 않아도 성공으로 처리한다', async () => {
+    const { stdout } = await runWithStdin('sh', ['-c', 'echo ok'], '')
+    expect(stdout.trim()).toBe('ok')
+  })
+
   // 회귀 방지: stdin에 error 리스너가 없으면 여기서 unhandled EPIPE가 나 main 프로세스가 죽는다.
   // OS 파이프 버퍼(darwin 최대 64KB)를 넘겨야 재현되므로 100KB를 쓴다. vitest 리포터에 기대지
   // 않고 uncaughtException을 직접 잡아 단언한다 — 리스너를 등록하면 리포터 폴백이 사라지므로
