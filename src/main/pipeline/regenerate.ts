@@ -36,8 +36,17 @@ export async function regenerateSummary(deps: {
 
   if (!gitRepo) return { ok: true, meeting: updated }
 
-  await deps.git('git', ['add', path.join('meetings', deps.filename)])
-  await deps.git('git', ['commit', '-m', `docs(meetings): ${meeting.title} 요약 재생성`])
+  // 이 지점부터 요약은 이미 디스크에 있다. git 실패를 throw하면 렌더러가 "요약 생성 실패"로
+  // 오보하고(요약은 멀쩡히 저장됐다) 목록 새로고침도 건너뛴다 — user.email 미설정 신규 사용자,
+  // pre-commit 훅 실패, index.lock 잔존처럼 흔한 트리거다. 경고로 분리해 사실대로 알린다.
+  try {
+    await deps.git('git', ['add', path.join('meetings', deps.filename)])
+    await deps.git('git', ['commit', '-m', `docs(meetings): ${meeting.title} 요약 재생성`])
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('[regenerate] git 커밋 실패:', message)
+    return { ok: true, meeting: updated, saveWarning: `요약은 저장했지만 git 커밋에 실패했습니다: ${message}` }
+  }
   if (deps.autoSync) {
     try { await deps.git('git', ['push']) } catch { /* pushPending이 다음 목록 조회 때 재시도 */ }
   }

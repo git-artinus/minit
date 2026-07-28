@@ -115,7 +115,16 @@ test('요약 실패는 예외가 아니라 ok:false로 분류해 돌려준다', 
   const result = await regenerateSummary({
     repoRoot: repo, filename: 'a.md',
     summarize: async () => {
-      throw new ClaudeRunError('Not logged in · Please run /login', '', 1, null, false)
+      throw new ClaudeRunError({
+        stdout: 'Not logged in · Please run /login',
+        stderr: '',
+        exitCode: 1,
+        errorCode: null,
+        killed: false,
+        signal: null,
+        timeoutMs: 300_000,
+        stdinFailed: false
+      })
     },
     git,
     autoSync: true,
@@ -143,4 +152,27 @@ test('회의록 파일이 없으면 요약 실패로 위장하지 않고 그대�
       autoSync: false,
     })
   ).rejects.toThrow()
+})
+
+// git 실패를 throw하면 렌더러가 "요약 생성 실패"로 오보한다 — 요약은 이미 디스크에 있다.
+// user.email 미설정 신규 사용자에게 바로 재현되는 흔한 경로다.
+test('git 커밋이 실패해도 요약은 성공으로 보고하고 경고만 붙인다', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const repo = seedRepo()
+  const failingGit: RunCommand = async (_cmd, args) => {
+    if (args[0] === 'commit') throw new Error('Command failed: git commit — user.email 미설정')
+    return { stdout: '' }
+  }
+
+  const result = await regenerateSummary({
+    repoRoot: repo, filename: 'a.md',
+    summarize: async () => ({ summary: '새 요약', sections: [] }),
+    git: failingGit,
+    autoSync: false,
+  })
+
+  expect(expectOk(result).summary).toBe('새 요약')
+  expect(result.ok && result.saveWarning).toContain('git 커밋에 실패')
+  // 요약은 실제로 디스크에 남아야 한다.
+  expect(fs.readFileSync(path.join(repo, 'meetings', 'a.md'), 'utf-8')).toContain('새 요약')
 })
