@@ -268,8 +268,10 @@ export function SettingsModal(props: {
       .finally(() => setEnvChecking(false))
   }
 
+  // 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막히므로 메인을 경유한다
+  // (공유 기능이 writeClipboard를 도입한 것과 같은 이유).
   const copyInstallCommand = (): void => {
-    navigator.clipboard.writeText(CLAUDE_INSTALL_COMMAND).then(
+    window.minuting.writeClipboard(CLAUDE_INSTALL_COMMAND).then(
       () => setInstallCopied(true),
       () => setInstallCopied(false)
     )
