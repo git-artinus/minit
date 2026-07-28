@@ -1,0 +1,26 @@
+---
+import lockup from '../../../resources/brand/lockup-light.svg?raw'
+import lockupDark from '../../../resources/brand/lockup-dark.svg?raw'
+
+interface Props {
+  downloadUrl: string
+}
+
+const { downloadUrl } = Astro.props
+const base = import.meta.env.BASE_URL
+---
+
+<header class="nav">
+  <a class="nav-brand" href={base} aria-label="Minit 홈">
+    <span class="nav-lockup nav-lockup-light" set:html={lockup} />
+    <span class="nav-lockup nav-lockup-dark" set:html={lockupDark} />
+  </a>
+
+  <nav class="nav-links" aria-label="주요">
+    <a href={`${base}docs/`}>문서</a>
+    <a href={`${base}changelog/`}>변경 이력</a>
+    <a href="https://github.com/git-artinus/minit">GitHub</a>
+  </nav>
+
+  <a class="nav-cta" href={downloadUrl}>다운로드</a>
+</header>

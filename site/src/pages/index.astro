@@ -1,17 +1,54 @@
 ---
+import { Image } from 'astro:assets'
 import { fetchAllReleases, fetchLatestRelease } from '../lib/github'
 import { toDownload, toReleaseEntries } from '../lib/releases'
-import lockupLight from '../../../resources/brand/lockup-light.svg?raw'
-import lockupDark from '../../../resources/brand/lockup-dark.svg?raw'
+import SiteNav from '../components/SiteNav.astro'
+import SiteFooter from '../components/SiteFooter.astro'
+import appLight from '../assets/app-light.png'
+import appDark from '../assets/app-dark.png'
 import '../styles/landing.css'
 
 const base = import.meta.env.BASE_URL
-// 실패 시 예외가 그대로 올라가 빌드를 실패시킨다 — 조용한 폴백을 두지 않는다.
+
+// 실패 시 예외가 그대로 올라가 빌드를 실패시킨다 — 다운로드 링크 없는 랜딩은 배포 가치가 없다.
 const download = toDownload(await fetchLatestRelease())
 const recent = toReleaseEntries(await fetchAllReleases()).slice(0, 3)
 
 // 릴리즈 노트 첫 줄이 한 줄 요약이라는 것이 .github/RELEASE_TEMPLATE.md 의 서식이다.
 const summarize = (md: string): string => md.split('\n').find((l) => l.trim() !== '') ?? ''
+
+const steps = [
+  {
+    label: '녹음',
+    title: '회의 시작만 누릅니다',
+    body: '마이크로 대면 회의를 녹음합니다. 받아적는 사람이 따로 필요하지 않습니다.'
+  },
+  {
+    label: '회의 내용',
+    title: '말이 글이 됩니다',
+    body: '음성 인식이 기기 안에서 돌아 발언을 시간과 함께 기록합니다.'
+  },
+  {
+    label: '요약',
+    title: '읽을 수 있는 회의록이 됩니다',
+    body: '핵심 요약과 액션아이템을 담당·기한까지 정리해 남깁니다.'
+  }
+]
+
+const values = [
+  {
+    title: '기기 안에서 끝납니다',
+    body: '녹음과 음성 인식이 기기에서 처리되어 오디오가 밖으로 나가지 않습니다. 원본은 7일 뒤 자동으로 지워집니다.'
+  },
+  {
+    title: '참석자로 찾습니다',
+    body: '참석자 명단을 관리하고, 누가 있었던 회의인지로 회의록을 걸러 봅니다.'
+  },
+  {
+    title: '로그인 없이 씁니다',
+    body: '회의록은 항상 먼저 로컬에 저장됩니다. GitHub 백업과 Slack 발송은 원할 때만 켭니다.'
+  }
+]
 ---
 
 <html lang="ko">
@@ -19,27 +56,100 @@ const summarize = (md: string): string => md.split('\n').find((l) => l.trim() !=
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Minit — 대면 회의를 위한 회의록 앱</title>
-    <meta name="description" content="녹음하면 회의 내용과 요약을 자동으로 작성합니다." />
+    <meta name="description" content="녹음하면 회의 내용과 요약을 자동으로 작성합니다. macOS용 온디바이스 회의록 앱." />
     <link rel="icon" href={`${base}favicon.svg`} />
+
+    <meta property="og:title" content="Minit — 대면 회의를 위한 회의록 앱" />
+    <meta property="og:description" content="녹음하면 회의 내용과 요약을 자동으로 작성합니다." />
+    <meta property="og:type" content="website" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap"
+    />
   </head>
+
   <body>
+    <SiteNav downloadUrl={download.url} />
+
     <main>
       <section class="hero">
-        <div class="lockup lockup-light" set:html={lockupLight} />
-        <div class="lockup lockup-dark" set:html={lockupDark} />
-
-        <h1>대면 회의를 위한 회의록 앱</h1>
+        <p class="eyebrow">macOS · Apple Silicon</p>
+        <h1>
+          대면 회의를 위한<br />
+          <em>회의록 앱</em>
+        </h1>
         <p class="lede">녹음하면 회의 내용과 요약을 자동으로 작성합니다.</p>
 
-        <a class="cta" href={download.url}>macOS용 다운로드</a>
-        <p class="cta-meta">
-          v{download.version} · Apple Silicon(M1 이상) 전용 · 약 {download.sizeMB}MB
-        </p>
+        <div class="hero-cta">
+          <a class="cta" href={download.url}>macOS용 다운로드</a>
+          <p class="cta-meta">
+            <span>v{download.version}</span>
+            <span class="dot" aria-hidden="true">·</span>
+            <span>Apple Silicon(M1 이상)</span>
+            <span class="dot" aria-hidden="true">·</span>
+            <span>{download.sizeMB}MB</span>
+          </p>
+        </div>
 
+        <div class="shot">
+          <Image
+            class="shot-img shot-light"
+            src={appLight}
+            alt="Minit 앱 화면 — 왼쪽에 회의 목록, 오른쪽에 선택한 회의의 요약·논의·액션아이템·트랜스크립트"
+            widths={[720, 1080, 1440]}
+            sizes="(max-width: 1100px) 92vw, 1040px"
+            loading="eager"
+          />
+          <Image
+            class="shot-img shot-dark"
+            src={appDark}
+            alt=""
+            aria-hidden="true"
+            widths={[720, 1080, 1440]}
+            sizes="(max-width: 1100px) 92vw, 1040px"
+            loading="eager"
+          />
+        </div>
       </section>
 
-      <section class="updates">
-        <h2>최근 업데이트</h2>
+      <section class="flow" aria-labelledby="flow-h">
+        <h2 id="flow-h">녹음 한 번으로 끝납니다</h2>
+        <ol class="flow-steps">
+          {
+            steps.map((s, i) => (
+              <li style={`--i:${i}`}>
+                <span class="flow-num">0{i + 1}</span>
+                <span class="flow-label">{s.label}</span>
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+
+      <section class="values" aria-labelledby="values-h">
+        <h2 id="values-h" class="sr-only">주요 특징</h2>
+        <div class="value-grid">
+          {
+            values.map((v, i) => (
+              <article style={`--i:${i}`}>
+                <h3>{v.title}</h3>
+                <p>{v.body}</p>
+              </article>
+            ))
+          }
+        </div>
+      </section>
+
+      <section class="updates" aria-labelledby="updates-h">
+        <div class="updates-head">
+          <h2 id="updates-h">최근 업데이트</h2>
+          <a href={`${base}changelog/`}>전체 변경 이력 →</a>
+        </div>
         <ul>
           {
             recent.map((r) => (
@@ -51,14 +161,21 @@ const summarize = (md: string): string => md.split('\n').find((l) => l.trim() !=
             ))
           }
         </ul>
-        <a href={`${base}changelog/`}>전체 변경 이력 →</a>
       </section>
 
-      <footer>
-        <a href="https://github.com/git-artinus/minit">GitHub</a>
-        <a href={`${base}docs/`}>문서</a>
-        <a href={`${base}changelog/`}>변경 이력</a>
-      </footer>
+      <section class="closing">
+        <h2>지금 받아서 다음 회의부터 씁니다</h2>
+        <a class="cta" href={download.url}>macOS용 다운로드</a>
+        <p class="cta-meta">
+          <span>v{download.version}</span>
+          <span class="dot" aria-hidden="true">·</span>
+          <span>{download.sizeMB}MB</span>
+          <span class="dot" aria-hidden="true">·</span>
+          <a href={`${base}docs/install/`}>설치 방법</a>
+        </p>
+      </section>
     </main>
+
+    <SiteFooter />
   </body>
 </html>

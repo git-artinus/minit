@@ -1,0 +1,44 @@
+---
+import mark from '../../../resources/brand/mark.svg?raw'
+
+const base = import.meta.env.BASE_URL
+const year = 2026
+---
+
+<footer class="foot">
+  <div class="foot-inner">
+    <div class="foot-brand">
+      <span class="foot-mark" set:html={mark} />
+      <p>
+        대면 회의를 위한 회의록 앱.<br />
+        오디오는 기기 안에서만 처리됩니다.
+      </p>
+    </div>
+
+    <div class="foot-cols">
+      <section>
+        <h3>문서</h3>
+        <a href={`${base}docs/`}>사용 안내</a>
+        <a href={`${base}changelog/`}>변경 이력</a>
+      </section>
+      <section>
+        <h3>저장소</h3>
+        <a href="https://github.com/git-artinus/minit">GitHub</a>
+        <a href="https://github.com/git-artinus/minit/releases">릴리즈</a>
+        <a href="https://github.com/git-artinus/minit/issues/new/choose">문제 신고</a>
+      </section>
+      <section>
+        <h3>고지</h3>
+        <a href="https://github.com/git-artinus/minit/blob/main/LICENSE">라이선스</a>
+        <a href="https://github.com/git-artinus/minit/blob/main/THIRD-PARTY-NOTICES.md">
+          오픈소스 고지
+        </a>
+      </section>
+    </div>
+  </div>
+
+  <div class="foot-bar">
+    <span>© {year} Artinus</span>
+    <span class="foot-built">whisper.cpp · Electron</span>
+  </div>
+</footer>
