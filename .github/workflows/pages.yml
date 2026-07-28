@@ -33,6 +33,13 @@ jobs:
         working-directory: site
     steps:
       - uses: actions/checkout@v7
+        with:
+          # release:published 이벤트에서 github.sha는 "태그된 릴리즈의 마지막 커밋"이고
+          # ref는 refs/tags/<tag>다(GitHub 공식 문서, Events that trigger workflows).
+          # ref를 안 주면 actions/checkout이 그 태그 커밋을 체크아웃해 Pages를
+          # 릴리즈 시점 스냅샷으로 되돌려버린다. push/workflow_dispatch는 원래도
+          # main 기준이라 동작이 바뀌지 않는다.
+          ref: ${{ github.event.repository.default_branch }}
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
