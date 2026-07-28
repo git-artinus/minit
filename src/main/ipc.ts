@@ -16,6 +16,8 @@ import { runPipeline } from './pipeline/pipeline'
 import { transcribeAndRepair } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
 import { deleteMeeting, isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
+import { runWithStdin } from './pipeline/claude-run'
+import { classifySummaryError } from './pipeline/summary-error'
 import { regenerateSummary } from './pipeline/regenerate'
 import {
   addParticipants, dedupeAndSort, loadRoster, mergeNames, parseImportInput,
@@ -55,6 +57,7 @@ import type {
   GithubLoginState,
   Meeting,
   MeetingMeta,
+  RegenerateResult,
   Roster,
   SlackChannel,
   SlackSendFailure,
@@ -70,14 +73,6 @@ const runningPipelines = new Set<string>()
 // 이전 세션을 무효화해 경합을 막는다. registerIpc는 앱 생명주기 동안 1회만 호출되므로 모듈
 // 레벨 인스턴스 하나로 충분하다.
 const loginSessionManager = createLoginSessionManager()
-
-// claude CLI 호출 — 트랜스크립트를 stdin으로 넘긴다. pipeline:run과 summary:regenerate가 공유한다.
-const runWithStdin = (cmd: string, args: string[], stdin: string) =>
-  new Promise<{ stdout: string }>((resolve, reject) => {
-    const child = execFile(cmd, args, { maxBuffer: 64 * 1024 * 1024, timeout: 300_000 },
-      (err, stdout) => (err ? reject(err) : resolve({ stdout })))
-    child.stdin!.end(stdin)
-  })
 
 const GITHUB_REPO_RE = /^[\w.-]+\/[\w.-]+$/
 
@@ -329,11 +324,20 @@ export function registerIpc(
           captured.transcriptFlagged = flagged
           return segments
         },
-        summarize: (segments) =>
-          summarize({
-            run: runWithStdin, title: meta.title, segments,
-            participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
-          }),
+        summarize: async (segments) => {
+          try {
+            return await summarize({
+              run: runWithStdin, title: meta.title, segments,
+              participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
+            })
+          } catch (e) {
+            // 최초 요약도 같은 분류기를 통과시킨다. 이 경로가 실패 빈도가 가장 높은데, 그냥 던지면
+            // pipeline이 message(e)만 담고 그건 'claude 실행 실패 (…)' 한 줄이라 원인이 어디에도
+            // 남지 않는다(로깅은 분류기 안에만 있다). 분류된 detail로 바꿔 던져 진단을 보존한다.
+            const failure = classifySummaryError(e)
+            throw new Error(failure.detail, { cause: e })
+          }
+        },
         save: (meeting) => {
           const withFlag = captured.transcriptFlagged ? { ...meeting, transcriptFlagged: true } : meeting
           captured.meeting = withFlag
@@ -513,9 +517,9 @@ export function registerIpc(
     return { deleted: result.deleted, canceled: false }
   })
 
-  ipcMain.handle('summary:regenerate', async (_e, filename: string) => {
+  ipcMain.handle('summary:regenerate', async (_e, filename: string): Promise<RegenerateResult> => {
     if (!isValidMeetingFilename(filename)) throw new Error('invalid filename')
-    const updated = await regenerateSummary({
+    const result = await regenerateSummary({
       repoRoot: settings.repoRoot, filename,
       summarize: (meeting) =>
         summarize({
@@ -525,14 +529,15 @@ export function registerIpc(
       git: systemGit(settings.repoRoot),
       autoSync: settings.autoPush,
     })
+    if (!result.ok) return result
     // pipeline:run과 동일한 후처리 경로 — 요약이 갱신된 뒤에만 Slack 발송을 시도한다(실패 격리 동일).
     notifySlackForMeeting(
-      updated,
+      result.meeting,
       settings.slackChannelId,
       () => loadSlackToken(configDir, { fs, safeStorage }),
       sendSlackFailureNotice
     )
-    return updated
+    return result
   })
 
   ipcMain.handle('settings:get', (): AppSettings => toAppSettings())

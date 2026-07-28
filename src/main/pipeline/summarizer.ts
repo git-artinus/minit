@@ -3,7 +3,9 @@ import type { ActionItem, MeetingSection, TranscriptSegment } from '../../shared
 import type { MeetingTypeDef } from '../../shared/meeting-types'
 
 export interface SummaryResult { summary: string; sections: MeetingSection[] }
-export type RunWithStdin = (cmd: string, args: string[], stdin: string) => Promise<{ stdout: string }>
+export type RunWithStdin = (
+  cmd: string, args: string[], stdin: string, timeoutMs?: number
+) => Promise<{ stdout: string }>
 
 export function buildPrompt(typeDef: MeetingTypeDef, title: string, participants: string[]): string {
   const sectionKeys = typeDef.sectionDefs.map((d) => `"${d.heading}"`).join(', ')
@@ -36,6 +38,18 @@ export function buildPrompt(typeDef: MeetingTypeDef, title: string, participants
   ]
     .filter((l) => l !== '')
     .join('\n')
+}
+
+/**
+ * claude가 exit 0으로 정상 종료했는데 출력이 JSON 스키마를 벗어난 경우.
+ * 응답 원문을 그대로 실어 보낸다 — 이걸 버리면 "왜 실패했는지"를 알 방법이 사라진다.
+ * 절단은 여기서 하지 않는다(분류기가 앞뒤 보존·생략 고지 정책으로 일괄 처리한다).
+ */
+export class InvalidOutputError extends Error {
+  constructor(readonly raw: string) {
+    super('claude 응답에서 JSON을 찾지 못했다')
+    this.name = 'InvalidOutputError'
+  }
 }
 
 interface RawOutput { summary: string; sections?: Record<string, unknown> }
@@ -111,7 +125,7 @@ export function parseClaudeOutput(stdout: string, typeDef: MeetingTypeDef): Summ
       (found, candidate) => found ?? tryParse(candidate),
       null
     )
-  if (!parsed) throw new Error('claude 응답에서 JSON을 찾지 못했다')
+  if (!parsed) throw new InvalidOutputError(stdout)
   // 섹션 kind는 LLM 출력이 아니라 타입 정의에서 온다 — 키 누락·형식 이탈에도 구조가 무너지지 않는다.
   const raw: Record<string, unknown> =
     typeof parsed.sections === 'object' && parsed.sections !== null ? parsed.sections : {}

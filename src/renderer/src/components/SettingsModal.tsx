@@ -7,7 +7,9 @@ import type {
   UpdateCheckResult,
   UpdateProgress
 } from '../../../shared/types'
+import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 import { useMeetings } from '../state/meetings'
+import { useSetup } from '../state/setup'
 import { GithubConnectFlow } from './GithubConnectFlow'
 import { RosterSection } from './RosterSection'
 import { SlackChannelSelect } from './SlackChannelSelect'
@@ -55,6 +57,13 @@ export function SettingsModal(props: {
   const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
   const [slackError, setSlackError] = useState<string | null>(null)
 
+  // Claude CLI 상태(#8) — which claude 결과를 그대로 쓴다(사용량을 소모하는 사전 스모크 테스트는
+  // 하지 않는다). env는 SetupProvider가 단일 소스로 들고 있다 — 각자 조회하면 이 화면과 설치
+  // 패널이 서로 다른 상태를 보여준다.
+  const { env, envError, rechecking: envChecking, recheck: recheckClaude } = useSetup()
+  const [installCopied, setInstallCopied] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
+
   const [github, setGithub] = useState<GithubLoginState | null>(null)
   const [githubConnecting, setGithubConnecting] = useState(false)
   const [githubRepos, setGithubRepos] = useState<string[] | null>(null)
@@ -75,6 +84,8 @@ export function SettingsModal(props: {
     setUpdateDownloading(false)
     setUpdateProgress(null)
     setUpdateError(null)
+    setInstallCopied(false)
+    setCopyError(null)
     window.minuting.getSettings().then(setSettings).catch(() => {})
     window.minuting.getAppVersion().then(setVersion).catch(() => {})
     window.minuting.getGithubLoginState().then(setGithub).catch(() => {})
@@ -250,6 +261,20 @@ export function SettingsModal(props: {
     }
   }
 
+  // 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막히므로 메인을 경유한다
+  // (공유 기능이 writeClipboard를 도입한 것과 같은 이유).
+  const copyInstallCommand = (): void => {
+    setCopyError(null)
+    window.minuting.writeClipboard(CLAUDE_INSTALL_COMMAND).then(
+      () => {
+        setInstallCopied(true)
+        // 되돌리지 않으면 '복사됨'이 고정돼 두 번째 복사가 됐는지 알 수 없다.
+        window.setTimeout(() => setInstallCopied(false), 2000)
+      },
+      () => setCopyError('복사에 실패했습니다 — 위 명령을 직접 복사하세요.')
+    )
+  }
+
   const checkForUpdate = (): void => {
     setUpdateError(null)
     setUpdateResult(null)
@@ -294,6 +319,59 @@ export function SettingsModal(props: {
           </button>
         </header>
         {error && <p className="setting-error">{error}</p>}
+
+        <div className="setting-row">
+          <div className="setting-label">Claude</div>
+          <div className="setting-desc">{CLAUDE_DEPENDENCY_NOTICE}</div>
+          <div className="setting-path-row">
+            {/* which claude가 증명하는 건 "설치"뿐이다. GitHub의 "연결됨"(토큰 검증 완료)과
+                같은 어휘를 쓰면 로그인 안 된 상태를 사용 가능으로 오해하게 된다. */}
+            <div className="setting-desc">
+              {envError !== null ? '확인 실패' : env === null ? '확인 중…' : env.claude ? '설치됨' : '미설치'}
+            </div>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                recheckClaude().catch(() => {})
+              }}
+              disabled={envChecking}
+            >
+              {envChecking ? '확인 중…' : '다시 확인'}
+            </button>
+          </div>
+          {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
+          {envError !== null && <p className="setting-error">환경 확인 실패: {envError}</p>}
+
+          {env !== null && !env.claude && (
+            <>
+              <div className="setting-desc">터미널에서 아래 명령으로 설치한 뒤 [다시 확인]을 누르세요.</div>
+              <div className="setting-path-row">
+                <div className="setting-path" title={CLAUDE_INSTALL_COMMAND}>
+                  {CLAUDE_INSTALL_COMMAND}
+                </div>
+                <button type="button" className="btn-ghost" onClick={copyInstallCommand}>
+                  {installCopied ? '복사됨' : '복사'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
+                >
+                  설치 문서
+                </button>
+              </div>
+              {copyError !== null && <p className="setting-error">{copyError}</p>}
+            </>
+          )}
+
+          {env?.claude && (
+            // 로그인은 대화형 CLI 절차라 앱이 대신할 수 없다. 안내 + 재검사 루프가 최선이다.
+            <div className="setting-desc">
+              요약이 계속 실패한다면 터미널에서 claude 를 실행해 로그인 상태와 남은 사용량을 확인하세요.
+            </div>
+          )}
+        </div>
 
         <div className="setting-row">
           <div className="setting-label">테마</div>

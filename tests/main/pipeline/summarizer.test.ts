@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { buildPrompt, parseClaudeOutput, summarize } from '../../../src/main/pipeline/summarizer'
+import {
+  buildPrompt, InvalidOutputError, parseClaudeOutput, summarize
+} from '../../../src/main/pipeline/summarizer'
 import { meetingTypeDef } from '../../../src/shared/meeting-types'
 import type { ActionItem } from '../../../src/shared/types'
 
@@ -27,8 +29,29 @@ describe('parseClaudeOutput', () => {
   test('앞뒤에 설명 텍스트가 붙어도 첫 JSON 객체를 파싱한다', () => {
     expect(parseClaudeOutput('결과입니다.\n' + valid + '\n끝.', general).summary).toContain('스프린트')
   })
-  test('JSON이 없으면 throw한다 (파이프라인이 요약 실패로 처리)', () => {
-    expect(() => parseClaudeOutput('죄송합니다, 실패했습니다.', general)).toThrow()
+  // 평범한 Error로 되돌리면 분류기가 invalid_output을 못 가리고 응답 원문도 사라진다.
+  // 타입과 원문 보존을 함께 못 박아야 그 회귀가 잡힌다.
+  test('JSON이 없으면 InvalidOutputError를 던지고 응답 원문을 보존한다', () => {
+    const response = '죄송합니다, 요약을 만들 수 없었습니다.'
+    expect(() => parseClaudeOutput(response, general)).toThrow(InvalidOutputError)
+    try {
+      parseClaudeOutput(response, general)
+      throw new Error('던져야 한다')
+    } catch (e) {
+      expect(e).toBeInstanceOf(InvalidOutputError)
+      expect((e as InvalidOutputError).raw).toBe(response)
+    }
+  })
+
+  // 절단은 분류기가 앞뒤 보존·생략 고지 정책으로 처리한다 — 여기서 미리 자르면 정책이 이원화된다.
+  test('원문을 자르지 않고 그대로 실어 보낸다', () => {
+    const long = 'x'.repeat(5000)
+    try {
+      parseClaudeOutput(long, general)
+      throw new Error('던져야 한다')
+    } catch (e) {
+      expect((e as InvalidOutputError).raw).toHaveLength(5000)
+    }
   })
   test('assignee 없는 액션아이템도 허용한다', () => {
     const out = parseClaudeOutput(JSON.stringify({ summary: 's', sections: { 액션아이템: [{ text: 't' }] } }), general)

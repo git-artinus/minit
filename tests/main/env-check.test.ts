@@ -59,6 +59,19 @@ describe('checkEnv', () => {
     expect(report).toEqual({ git: true, claude: true, whisper: false, model: true, repoRoot: '/repo' })
   })
 
+  // claude 미설치 안내(설정 섹션·온보딩 패널)가 전부 이 필드에 달려 있다.
+  test('claude가 PATH에 없으면 claude: false로 보고한다', async () => {
+    const report = await checkEnv({
+      commandExists: async (cmd) => cmd !== 'claude',
+      modelPath: '/ud/models/x.bin',
+      repoRoot: '/repo',
+      appRoot: '/app',
+      fileExists: (p) => p === '/ud/models/x.bin',
+    })
+    expect(report.claude).toBe(false)
+    expect(report.git).toBe(true)
+  })
+
   test('번들 바이너리가 있으면 PATH에 없어도 whisper: true', async () => {
     const report = await checkEnv({
       commandExists: async () => false,
