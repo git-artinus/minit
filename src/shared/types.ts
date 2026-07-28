@@ -35,6 +35,30 @@ export interface PipelineStatus {
 export interface EnvReport {
   git: boolean; claude: boolean; whisper: boolean; model: boolean; repoRoot: string
 }
+// 요약 실패 사유(#8) — claude CLI는 런타임 오류를 stdout에 쓰고 exit 1로 끝나므로,
+// exit code·stdout·stderr를 함께 봐야 원인을 가릴 수 있다. 분류는 main에서만 수행하고
+// (renderer 정규식 매칭은 버전·언어에 취약해 폐기) 렌더러는 사유 → 문구 매핑만 한다.
+export type SummaryFailureReason =
+  | 'not_installed'      // claude 실행 파일 없음 (spawn ENOENT)
+  | 'not_authenticated'  // 로그인 안 됨 / API 키 무효
+  | 'usage_limit'        // 사용량·한도 소진
+  | 'timeout'            // 제한 시간 초과로 강제 종료(SIGTERM)
+  | 'invalid_output'     // exit 0인데 JSON 스키마를 벗어난 응답
+  | 'unknown'            // 그 외 — detail에 원문을 그대로 실어 보낸다
+export interface SummaryFailure {
+  reason: SummaryFailureReason
+  // 사용자에게 보여줄 원인. 프롬프트 전문은 절대 포함하지 않는다(그게 원인을 가리던 주범이다).
+  detail: string
+  exitCode?: number
+}
+/**
+ * 요약 재생성 결과. 예상된 실패(claude)는 예외가 아니라 반환값으로 표현한다 —
+ * ipcMain.handle이 예외를 renderer로 넘길 때 message만 남기고 커스텀 프로퍼티를 잃기 때문이다.
+ * 파일 IO·git 오류는 계속 throw한다(예상 밖 예외와 섞지 않는다).
+ */
+export type RegenerateResult =
+  | { ok: true; meeting: Meeting }
+  | { ok: false; failure: SummaryFailure }
 // 개인 로스터(v0.4.0 ③a) — 회사 명단(teams 구조)을 폐기하고 사용자별 ~/.minit/participants.json에
 // 저장하는 평평한 이름 목록으로 재컨셉했다. 팀 구조·한글 이름 병기는 더 이상 없다.
 export interface Roster { participants: string[] }
