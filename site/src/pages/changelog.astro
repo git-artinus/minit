@@ -1,0 +1,38 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { renderReleaseBody } from '../lib/markdown'
+import { fetchAllReleases } from '../lib/github'
+import { toReleaseEntries } from '../lib/releases'
+
+const entries = toReleaseEntries(await fetchAllReleases())
+// 본문은 메인테이너가 작성한 릴리즈 노트다(.github/RELEASE_TEMPLATE.md 서식).
+// renderReleaseBody가 marked 변환 후 sanitize까지 처리한다 — src/lib/markdown.ts 참고.
+const rendered = entries.map((e) => ({ ...e, html: renderReleaseBody(e.bodyMarkdown) }))
+---
+
+<StarlightPage frontmatter={{ title: '변경 이력', tableOfContents: false }}>
+  <p>
+    각 버전의 상세 내용은 GitHub 릴리즈에서도 볼 수 있다. 이 목록은 릴리즈가 발행될 때마다
+    자동으로 갱신된다.
+  </p>
+
+  {
+    rendered.map((r) => (
+      <section>
+        <h2 id={`v${r.version}`}>v{r.version}</h2>
+        <p>
+          <time datetime={r.publishedAt}>{r.publishedAt}</time>
+          {' · '}
+          <a href={r.htmlUrl}>GitHub 릴리즈</a>
+          {r.dmgUrl && (
+            <>
+              {' · '}
+              <a href={r.dmgUrl}>DMG 내려받기</a>
+            </>
+          )}
+        </p>
+        <Fragment set:html={r.html} />
+      </section>
+    ))
+  }
+</StarlightPage>
