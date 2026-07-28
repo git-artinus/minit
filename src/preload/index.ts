@@ -4,6 +4,7 @@ import type {
   AppSettings,
   GithubLoginState,
   GithubLoginStatusEvent,
+  RegenerateResult,
   SlackChannel,
   SlackSendFailure,
   SlackTokenState,
@@ -45,7 +46,8 @@ const minutingApi = {
   replaceRoster: (names: string[]) => ipcRenderer.invoke('roster:replace', names),
   exportRosterFile: () => ipcRenderer.invoke('roster:exportFile'),
   importRosterFile: () => ipcRenderer.invoke('roster:importFile'),
-  regenerateSummary: (filename: string) => ipcRenderer.invoke('summary:regenerate', filename),
+  regenerateSummary: (filename: string): Promise<RegenerateResult> =>
+    ipcRenderer.invoke('summary:regenerate', filename),
   // 회의록 공유 — 클립보드는 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막힐 수
   // 있어 메인 프로세스를 경유한다.
   writeClipboard: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:write', text),
