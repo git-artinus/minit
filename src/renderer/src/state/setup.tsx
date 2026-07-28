@@ -4,6 +4,11 @@ import { deriveSetupState, isEnvReady, type SetupProgress, type SetupView } from
 
 export interface SetupApi {
   view: SetupView
+  /** 환경 검사 결과 원본 — 설정 화면도 이걸 쓴다(각자 조회하면 두 화면이 서로 모순된다). */
+  env: EnvReport | null
+  /** 환경 검사 자체가 실패한 경우. 삼키면 "확인 중…"이 영구 표시되거나 낡은 값이 신뢰된다. */
+  envError: string | null
+  rechecking: boolean
   ready: boolean
   minimized: boolean
   setMinimized: (m: boolean) => void
@@ -21,9 +26,22 @@ function useSetupInternal(): SetupApi {
   const [env, setEnv] = useState<EnvReport | null>(null)
   const [progress, setProgress] = useState<SetupProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [envError, setEnvError] = useState<string | null>(null)
+  const [rechecking, setRechecking] = useState(false)
   const [minimized, setMinimized] = useState(false)
 
-  const recheck = useCallback((): Promise<void> => window.minuting.checkEnv().then(setEnv), [])
+  const recheck = useCallback(async (): Promise<void> => {
+    setRechecking(true)
+    setEnvError(null)
+    try {
+      setEnv(await window.minuting.checkEnv())
+    } catch (e) {
+      // catch가 없으면 렌더러에 unhandled rejection이 남고 패널이 '확인 중'에 고착된다.
+      setEnvError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRechecking(false)
+    }
+  }, [])
 
   useEffect(() => {
     recheck()
@@ -48,6 +66,9 @@ function useSetupInternal(): SetupApi {
 
   return {
     view: deriveSetupState(env, progress, error),
+    env,
+    envError,
+    rechecking,
     ready: isEnvReady(env),
     minimized,
     setMinimized,

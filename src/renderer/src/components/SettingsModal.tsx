@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type {
   AppSettings,
-  EnvReport,
   GithubLoginState,
   SlackChannel,
   SlackTokenState,
@@ -10,6 +9,7 @@ import type {
 } from '../../../shared/types'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 import { useMeetings } from '../state/meetings'
+import { useSetup } from '../state/setup'
 import { GithubConnectFlow } from './GithubConnectFlow'
 import { RosterSection } from './RosterSection'
 import { SlackChannelSelect } from './SlackChannelSelect'
@@ -57,10 +57,12 @@ export function SettingsModal(props: {
   const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
   const [slackError, setSlackError] = useState<string | null>(null)
 
-  // Claude CLI 상태(#8) — which claude 결과를 그대로 쓴다(사용량을 소모하는 사전 스모크 테스트는 하지 않는다).
-  const [env, setEnv] = useState<EnvReport | null>(null)
-  const [envChecking, setEnvChecking] = useState(false)
+  // Claude CLI 상태(#8) — which claude 결과를 그대로 쓴다(사용량을 소모하는 사전 스모크 테스트는
+  // 하지 않는다). env는 SetupProvider가 단일 소스로 들고 있다 — 각자 조회하면 이 화면과 설치
+  // 패널이 서로 다른 상태를 보여준다.
+  const { env, envError, rechecking: envChecking, recheck: recheckClaude } = useSetup()
   const [installCopied, setInstallCopied] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
 
   const [github, setGithub] = useState<GithubLoginState | null>(null)
   const [githubConnecting, setGithubConnecting] = useState(false)
@@ -83,7 +85,7 @@ export function SettingsModal(props: {
     setUpdateProgress(null)
     setUpdateError(null)
     setInstallCopied(false)
-    window.minuting.checkEnv().then(setEnv).catch(() => {})
+    setCopyError(null)
     window.minuting.getSettings().then(setSettings).catch(() => {})
     window.minuting.getAppVersion().then(setVersion).catch(() => {})
     window.minuting.getGithubLoginState().then(setGithub).catch(() => {})
@@ -259,21 +261,17 @@ export function SettingsModal(props: {
     }
   }
 
-  const recheckClaude = (): void => {
-    setEnvChecking(true)
-    window.minuting
-      .checkEnv()
-      .then(setEnv)
-      .catch(() => {})
-      .finally(() => setEnvChecking(false))
-  }
-
   // 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막히므로 메인을 경유한다
   // (공유 기능이 writeClipboard를 도입한 것과 같은 이유).
   const copyInstallCommand = (): void => {
+    setCopyError(null)
     window.minuting.writeClipboard(CLAUDE_INSTALL_COMMAND).then(
-      () => setInstallCopied(true),
-      () => setInstallCopied(false)
+      () => {
+        setInstallCopied(true)
+        // 되돌리지 않으면 '복사됨'이 고정돼 두 번째 복사가 됐는지 알 수 없다.
+        window.setTimeout(() => setInstallCopied(false), 2000)
+      },
+      () => setCopyError('복사에 실패했습니다 — 위 명령을 직접 복사하세요.')
     )
   }
 
@@ -329,12 +327,21 @@ export function SettingsModal(props: {
             {/* which claude가 증명하는 건 "설치"뿐이다. GitHub의 "연결됨"(토큰 검증 완료)과
                 같은 어휘를 쓰면 로그인 안 된 상태를 사용 가능으로 오해하게 된다. */}
             <div className="setting-desc">
-              {env === null ? '확인 중…' : env.claude ? '설치됨' : '미설치'}
+              {envError !== null ? '확인 실패' : env === null ? '확인 중…' : env.claude ? '설치됨' : '미설치'}
             </div>
-            <button type="button" className="btn-ghost" onClick={recheckClaude} disabled={envChecking}>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                recheckClaude().catch(() => {})
+              }}
+              disabled={envChecking}
+            >
               {envChecking ? '확인 중…' : '다시 확인'}
             </button>
           </div>
+          {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
+          {envError !== null && <p className="setting-error">환경 확인 실패: {envError}</p>}
 
           {env !== null && !env.claude && (
             <>
@@ -349,11 +356,12 @@ export function SettingsModal(props: {
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL)}
+                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
                 >
                   설치 문서
                 </button>
               </div>
+              {copyError !== null && <p className="setting-error">{copyError}</p>}
             </>
           )}
 

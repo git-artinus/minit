@@ -23,7 +23,7 @@ function panelTitle(kind: string): string {
 }
 
 export function SetupPanel(): React.JSX.Element | null {
-  const { view, minimized, setMinimized, recheck, download } = useSetup()
+  const { view, minimized, setMinimized, recheck, download, envError } = useSetup()
   if (view.kind === 'hidden') return null
 
   return (
@@ -42,7 +42,18 @@ export function SetupPanel(): React.JSX.Element | null {
       </div>
       {!minimized && (
         <div className="setup-panel-body">
-          {view.kind === 'checking' && <p className="env-desc">환경 확인 중…</p>}
+          {view.kind === 'checking' &&
+            (envError === null ? (
+              <p className="env-desc">환경 확인 중…</p>
+            ) : (
+              // 검사가 실패하면 env가 null로 남아 영구히 '확인 중'이 된다 — 사실을 알리고 재시도를 준다.
+              <>
+                <p className="env-error">환경 확인 실패: {envError}</p>
+                <button type="button" className="btn-primary" onClick={recheck}>
+                  다시 확인
+                </button>
+              </>
+            ))}
 
           {view.kind === 'unsupported' && (
             <>
@@ -124,7 +135,7 @@ export function SetupPanel(): React.JSX.Element | null {
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL)}
+                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
                 >
                   설치 문서 열기
                 </button>
