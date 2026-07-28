@@ -8,6 +8,15 @@ on:
       - 'resources/brand/**'
       - '.github/workflows/pages.yml'
   # 릴리즈를 발행하면 다운로드 버튼과 Changelog가 자동으로 최신화된다.
+  #
+  # 주의(v0.10.0에서 실제로 겪음): 이 이벤트의 ref는 refs/tags/<tag>라서, github-pages
+  # 환경의 배포 정책에 태그가 없으면 build는 통과하고 deploy만 거부된다
+  # ("Tag ... is not allowed to deploy to github-pages due to environment protection
+  # rules"). 그러면 릴리즈는 게시됐는데 사이트는 옛 버전을 계속 내려주고, 아무도
+  # 알아채지 못한다. 환경 정책에 `v*`(type: tag)가 남아 있어야 한다 —
+  #   gh api repos/git-artinus/minit/environments/github-pages/deployment-branch-policies
+  # 로 확인하고, 없으면 -f name='v*' -f type='tag' 로 다시 추가한다.
+  # (배포되는 내용은 아래 checkout이 main을 명시하므로 태그 시점 스냅샷이 아니다.)
   release:
     types: [published]
   workflow_dispatch:
