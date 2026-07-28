@@ -8,7 +8,10 @@ import DOMPurify from 'isomorphic-dompurify'
 // 버튼이 외부 기여자의 PR 제목을 본문에 그대로 넣으므로 write 권한 전제는 깨진다.
 // git-artinus.github.io 는 조직 Pages의 공유 오리진이라 여기서 XSS가 성립하면
 // 같은 오리진의 다른 레포 페이지까지 영향을 받는다. 그래서 sanitize한다.
+// DOMPurify 기본 설정은 style 속성을 통과시킨다. XSS는 아니지만
+// `style="background:url(https://attacker/…)"` 가 페이지를 여는 순간 외부로 요청을 보내
+// 열람 사실이 새어 나간다. 릴리즈 노트는 마크다운이라 인라인 스타일이 필요 없으므로 막는다.
 export function renderReleaseBody(markdown: string): string {
   const html = marked.parse(markdown, { async: false })
-  return DOMPurify.sanitize(html)
+  return DOMPurify.sanitize(html, { FORBID_ATTR: ['style'] })
 }

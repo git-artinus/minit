@@ -43,12 +43,12 @@ describe('findDmgAsset', () => {
 
   test('dmg가 없으면 개수를 담아 throw', () => {
     const none = release({ assets: [asset('latest-mac.yml')] })
-    expect(() => findDmgAsset(none)).toThrow(/0/)
+    expect(() => findDmgAsset(none)).toThrow(/0개다/)
   })
 
   test('dmg가 둘 이상이면 throw', () => {
     const two = release({ assets: [asset('a.dmg'), asset('b.dmg')] })
-    expect(() => findDmgAsset(two)).toThrow(/2/)
+    expect(() => findDmgAsset(two)).toThrow(/2개다/)
   })
 })
 
