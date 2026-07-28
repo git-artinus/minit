@@ -121,3 +121,14 @@ export interface UpdateProgress {
   transferred: number
   total: number
 }
+
+/**
+ * 자동 업데이트 확인의 건강 상태. 이 앱의 유일한 배포 채널이 업데이터라, 자동 확인이 계속
+ * 실패하면 사용자는 구버전에 고립된 채 아무 신호도 못 받는다 — 설정에서 알려주기 위한 값이다.
+ * lastSuccessAt=0은 이 실행에서 아직 성공한 적 없음을 뜻한다.
+ */
+export interface AutoCheckStatus {
+  lastSuccessAt: number
+  consecutiveFailures: number
+  lastError: 'feed_unreachable' | 'other' | null
+}
