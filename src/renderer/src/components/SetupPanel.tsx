@@ -1,5 +1,6 @@
 import { BrandMark } from './BrandLogo'
 import { useSetup } from '../state/setup'
+import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 
 const WHISPER_HINT =
   '음성 인식(받아쓰기)에 사용 — Apple Silicon Mac은 앱에 포함되어 있어 보통 이 안내가 나오지 않습니다. 계속 보인다면 Intel Mac이거나 파일 손상: 터미널에서 brew install whisper-cpp 실행'
@@ -14,6 +15,8 @@ function panelTitle(kind: string): string {
       return '음성 인식 준비 실패'
     case 'checking':
       return '환경 확인 중'
+    case 'claude-missing':
+      return '요약 기능을 쓰려면 Claude CLI가 필요합니다'
     default:
       return '음성 인식 준비'
   }
@@ -105,6 +108,27 @@ export function SetupPanel(): React.JSX.Element | null {
               <button type="button" className="btn-primary" onClick={download}>
                 다시 시도
               </button>
+            </>
+          )}
+
+          {/* 비차단 안내 — claude가 없어도 녹음·받아쓰기는 되므로 회의 시작을 막지 않는다. */}
+          {view.kind === 'claude-missing' && (
+            <>
+              <p className="env-desc">{CLAUDE_DEPENDENCY_NOTICE}</p>
+              <p className="env-desc">터미널에서 아래를 실행해 설치한 뒤 [다시 확인]을 누르세요.</p>
+              <div className="setting-path">{CLAUDE_INSTALL_COMMAND}</div>
+              <div className="setting-path-row">
+                <button type="button" className="btn-primary" onClick={recheck}>
+                  다시 확인
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL)}
+                >
+                  설치 문서 열기
+                </button>
+              </div>
             </>
           )}
         </div>

@@ -2,13 +2,10 @@ import { useMemo, useState } from 'react'
 import { formatStartTime, formatTimestamp } from '../../../shared/meeting-file'
 import { mergeParagraphs } from '../../../shared/transcript'
 import { meetingTypeDef } from '../../../shared/meeting-types'
-import type { MeetingSection } from '../../../shared/types'
+import type { MeetingSection, SummaryFailure } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
+import { summaryFailureView } from '../state/summary-failure'
 import { ShareMeetingModal } from './ShareMeetingModal'
-
-// 사용량 한도 초과일 가능성이 있는 에러 메시지 패턴(Claude CLI가 남기는 문자열 기준) — 실버그
-// 대응(v0.4.0 ③b): 재생성 실패를 무반응으로 삼키지 않고 표면화한다.
-const LIMIT_ERROR_RE = /limit|usage/i
 
 // 섹션 kind별 본문 렌더 — actions는 담당/기한 badge, list는 불릿, text는 문단.
 function SectionBody({ section }: { section: MeetingSection }): React.JSX.Element {
@@ -35,10 +32,25 @@ function SectionBody({ section }: { section: MeetingSection }): React.JSX.Elemen
   return section.text.trim() === '' ? <p className="muted">내용이 없습니다.</p> : <p>{section.text}</p>
 }
 
+// detail(claude가 실제로 남긴 원문)은 사유와 무관하게 항상 노출한다 — 분류가 빗나가도
+// 사용자가 진짜 원인을 볼 수 있어야 한다. 사유를 못 가리는 것보다 나쁜 건 틀린 사유만 보이는 것이다.
+function SummaryFailureNotice({ failure }: { failure: SummaryFailure }): React.JSX.Element {
+  const view = summaryFailureView(failure)
+  return (
+    <div className="summary-failure">
+      <p className="summary-failure-title">{view.title}</p>
+      <p className="setting-desc">{view.hint}</p>
+      {failure.detail.trim() !== '' && <div className="summary-failure-detail">{failure.detail}</div>}
+    </div>
+  )
+}
+
 export function MeetingDetail(): React.JSX.Element {
   const { meetings, selected, refresh } = useMeetings()
   const meeting = meetings.find((m) => m.filename === selected)
   const [regenerating, setRegenerating] = useState(false)
+  // 분류된 실패(claude 원인)와 예상 밖 예외(파일·git)를 구분해 담는다.
+  const [regenFailure, setRegenFailure] = useState<SummaryFailure | null>(null)
   const [regenError, setRegenError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   // 기존(v0.5.0 이전) 회의록은 endMs가 없어 start→start 근사 gap으로 병합된다. 원본 파일은 수정하지 않는다.
@@ -67,8 +79,14 @@ export function MeetingDetail(): React.JSX.Element {
   const regenerateSummary = async (): Promise<void> => {
     setRegenerating(true)
     setRegenError(null)
+    setRegenFailure(null)
     try {
-      await window.minuting.regenerateSummary(meeting.filename)
+      const result = await window.minuting.regenerateSummary(meeting.filename)
+      // 반환값을 버리면 실패가 조용히 사라진다(예외가 아니라 값이므로 catch가 잡지 않는다).
+      if (!result.ok) {
+        setRegenFailure(result.failure)
+        return
+      }
       await refresh()
     } catch (e) {
       setRegenError(e instanceof Error ? e.message : String(e))
@@ -120,17 +138,19 @@ export function MeetingDetail(): React.JSX.Element {
           : (
             <>
               <p className="muted">
-                요약이 없습니다. (claude 미설치 또는 요약 실패){' '}
-                <button type="button" className="btn-ghost" disabled={regenerating} onClick={regenerateSummary}>
+                요약이 없습니다. 아래 버튼을 누르면 원인을 확인하고 다시 생성합니다.{' '}
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  // 미설치처럼 앱 밖에서 조치해야 하는 사유는 재시도해도 같은 결과다.
+                  disabled={regenerating || (regenFailure !== null && !summaryFailureView(regenFailure).canRetry)}
+                  onClick={regenerateSummary}
+                >
                   {regenerating ? '재생성 중…' : '요약 재생성'}
                 </button>
               </p>
-              {regenError && (
-                <p className="setting-error">
-                  요약 생성 실패: {regenError}
-                  {LIMIT_ERROR_RE.test(regenError) && ' — Claude 사용량 한도일 수 있습니다 — 잠시 후 다시 시도하세요'}
-                </p>
-              )}
+              {regenFailure && <SummaryFailureNotice failure={regenFailure} />}
+              {regenError && <p className="setting-error">요약 생성 실패: {regenError}</p>}
             </>
           )}
       </section>

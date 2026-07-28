@@ -19,6 +19,10 @@ describe('isEnvReady', () => {
   test('whisper·model 모두 있으면 true', () => {
     expect(isEnvReady(env({ whisper: true, model: true }))).toBe(true)
   })
+  // claude 없이도 녹음·전사는 되므로 회의 시작을 막지 않는다(비차단).
+  test('claude가 없어도 회의 시작은 가능하다', () => {
+    expect(isEnvReady(env({ whisper: true, model: true, claude: false }))).toBe(true)
+  })
 })
 
 describe('deriveSetupState', () => {
@@ -56,6 +60,28 @@ describe('deriveSetupState', () => {
   test('model이 없고 오류·진행 모두 없으면 needs-model', () => {
     expect(deriveSetupState(env({ whisper: true, model: false }), null, null)).toEqual({
       kind: 'needs-model'
+    })
+  })
+
+  test('model까지 준비된 뒤 claude가 없으면 claude-missing', () => {
+    expect(deriveSetupState(env({ whisper: true, model: true, claude: false }), null, null)).toEqual({
+      kind: 'claude-missing'
+    })
+  })
+
+  // claude 안내가 더 급한 안내를 가리지 않아야 한다.
+  test('model이 아직 없으면 claude 미설치보다 모델 안내가 우선한다', () => {
+    expect(deriveSetupState(env({ whisper: true, model: false, claude: false }), null, null)).toEqual({
+      kind: 'needs-model'
+    })
+    expect(
+      deriveSetupState(env({ whisper: true, model: false, claude: false }), { received: 1, total: 2 }, null)
+    ).toEqual({ kind: 'downloading', progress: { received: 1, total: 2 } })
+  })
+
+  test('whisper가 없으면 claude 상태와 무관하게 unsupported', () => {
+    expect(deriveSetupState(env({ whisper: false, claude: false }), null, null)).toEqual({
+      kind: 'unsupported'
     })
   })
 })
