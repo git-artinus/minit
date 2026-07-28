@@ -1,6 +1,6 @@
-import type { UpdateCheckResult, UpdateProgress } from '../shared/types'
+import type { AutoCheckStatus, UpdateCheckResult, UpdateProgress } from '../shared/types'
 
-export type { UpdateCheckResult, UpdateProgress }
+export type { AutoCheckStatus, UpdateCheckResult, UpdateProgress }
 
 // electron-updater의 실제 autoUpdater(AppUpdater)는 EventEmitter를 상속하며 update-available/
 // update-not-available/update-downloaded/download-progress/error 이벤트를 낸다. 이 인터페이스는
@@ -18,7 +18,12 @@ export interface AutoUpdaterLike {
   once(event: 'update-downloaded', listener: (event: unknown) => void): unknown
   once(event: 'error', listener: (error: Error) => void): unknown
   removeListener(
-    event: 'download-progress' | 'update-available' | 'update-not-available' | 'update-downloaded' | 'error',
+    event:
+      | 'download-progress'
+      | 'update-available'
+      | 'update-not-available'
+      | 'update-downloaded'
+      | 'error',
     listener: (...args: never[]) => void
   ): unknown
 }
@@ -53,7 +58,8 @@ export function classifyUpdateError(e: unknown): UpdateErrorCode {
   if (!(e instanceof Error)) return 'other'
 
   const statusCode = (e as { statusCode?: unknown }).statusCode
-  if (typeof statusCode === 'number' && (statusCode === 404 || statusCode === 403)) return 'feed_unreachable'
+  if (typeof statusCode === 'number' && (statusCode === 404 || statusCode === 403))
+    return 'feed_unreachable'
 
   const haystack = `${e.name} ${e.message}`.toLowerCase()
   const feedUnreachablePatterns = [
@@ -74,18 +80,27 @@ export function classifyUpdateError(e: unknown): UpdateErrorCode {
 // 강제 재시작한다. 녹음 중이거나(오디오 파이프라인 미저장) 전사·요약 파이프라인 처리 중에는
 // 진행 중인 작업이 통째로 유실될 수 있어 이를 막는다. electron 비의존 순수 함수로 분리해
 // ipc.ts(recording 상태·runningPipelines 크기 보유)가 update:download 첫 줄에서 호출한다.
-export function canInstallUpdate(state: { isRecording: boolean; runningPipelineCount: number }): InstallGuardResult {
+export function canInstallUpdate(state: {
+  isRecording: boolean
+  runningPipelineCount: number
+}): InstallGuardResult {
   if (state.isRecording) return { ok: false, reason: 'recording_in_progress' }
   if (state.runningPipelineCount > 0) return { ok: false, reason: 'pipeline_in_progress' }
   return { ok: true }
 }
 
-// 자동 확인 주기(#): 시작 직후 1회 → 이후 4시간마다. 기존에는 시작 시 1회가 전부여서 앱을
-// 켜둔 채로는 새 릴리즈가 나와도 영영 알 수 없었다(껐다 켜야만 확인됐다).
+// 기동 직후 지연 — 네트워크·리소스 경합을 피할 만큼만 둔다.
 export const STARTUP_CHECK_DELAY_MS = 3_000
+// 켜둔 채로 새 릴리즈를 알 수 있는 최대 지연. 기존에는 자동 확인이 시작 시 1회뿐이라, 설정에서
+// [업데이트 확인]을 직접 누르지 않는 한 앱을 켜둔 동안에는 새 릴리즈를 알 수 없었다.
 export const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+// 타이머 틱. 실제 확인 여부는 아래 스로틀이 정한다 — 짧게 돌면 절전 복귀로 지연된 주기도 빨리 만회한다.
+export const CHECK_TICK_MS = 30 * 60 * 1000
 // 창을 다시 열 때도 확인하되, 여닫기를 반복해도 피드를 연타하지 않도록 최소 간격을 둔다.
 export const WINDOW_SHOW_MIN_INTERVAL_MS = 30 * 60 * 1000
+// 실패 뒤에는 4시간을 기다리지 않는다 — 기동 직후의 일시적 네트워크 실패 하나로 알림이 4시간
+// 막히면 "켜둔 채로는 알 수 없다"는 원래 문제를 축소 재현하는 셈이다.
+export const FAILED_RETRY_INTERVAL_MS = CHECK_TICK_MS
 
 /**
  * 마지막 확인 이후 최소 간격이 지났는지. lastCheckedAt=0은 "아직 확인한 적 없음"으로 본다.
@@ -94,6 +109,92 @@ export const WINDOW_SHOW_MIN_INTERVAL_MS = 30 * 60 * 1000
 export function shouldCheckNow(lastCheckedAt: number, now: number, minIntervalMs: number): boolean {
   if (lastCheckedAt === 0) return true
   return now - lastCheckedAt >= minIntervalMs
+}
+
+export type CheckTrigger = 'startup' | 'periodic' | 'window-show'
+
+/**
+ * 자동 확인 스케줄·보관 상태를 electron 없이 담는다. ipc.ts에는 타이머·이벤트 배선만 남겨
+ * 스로틀·보관·실패 집계를 단위 테스트로 못박는다(settings-init.ts가 같은 이유로 쓴 방식).
+ * 이 영역은 회귀가 조용해서 — setInterval 한 줄만 지워도 사용자는 알 수 없다 — 검증이 특히 필요하다.
+ */
+export interface UpdateNotifier {
+  /** 트리거별 스로틀을 적용해 확인한다. 통과하지 못하면 아무것도 하지 않는다. */
+  maybeCheck: (trigger: CheckTrigger) => Promise<void>
+  /** 설정의 수동 확인 결과를 반영한다 — 보관값·스탬프를 자동 경로와 공유한다. */
+  recordManualCheck: (result: UpdateCheckResult) => void
+  latest: () => UpdateCheckResult | null
+  status: () => AutoCheckStatus
+}
+
+export function createUpdateNotifier(deps: {
+  check: () => Promise<UpdateCheckResult>
+  notify: (result: UpdateCheckResult) => void
+  now: () => number
+  classify?: (e: unknown) => UpdateErrorCode
+  log?: (message: string, detail: string) => void
+}): UpdateNotifier {
+  const classify = deps.classify ?? classifyUpdateError
+  const log = deps.log ?? ((message, detail): void => console.error(message, detail))
+
+  let latest: UpdateCheckResult | null = null
+  let lastCheckedAt = 0
+  let lastSuccessAt = 0
+  let consecutiveFailures = 0
+  let lastError: UpdateErrorCode | null = null
+
+  // null이면 이번 트리거는 확인하지 않는다.
+  const minInterval = (trigger: CheckTrigger): number | null => {
+    if (trigger === 'startup') return 0
+    if (trigger === 'window-show') {
+      // 기동 시 ready-to-show가 곧바로 show()를 부르므로 이 트리거가 시작 확인보다 먼저 온다.
+      // 아직 한 번도 확인하지 않았다면 곧 실행될 시작 확인이 담당한다 — 같은 조회를 두 번 하지 않는다.
+      return lastCheckedAt === 0 ? null : WINDOW_SHOW_MIN_INTERVAL_MS
+    }
+    return consecutiveFailures > 0 ? FAILED_RETRY_INTERVAL_MS : PERIODIC_CHECK_INTERVAL_MS
+  }
+
+  const applyResult = (result: UpdateCheckResult): void => {
+    lastSuccessAt = deps.now()
+    consecutiveFailures = 0
+    lastError = null
+    // 확인이 권위 있는 답을 줬으면 보관값도 그 답으로 맞춘다 — 회수된 릴리즈를 계속 제공하면
+    // 릴리즈 노트 링크가 404가 되고 업데이트 버튼은 다운로드 실패로 끝난다.
+    latest = result.available ? result : null
+  }
+
+  return {
+    maybeCheck: async (trigger) => {
+      const interval = minInterval(trigger)
+      if (interval === null) return
+      const now = deps.now()
+      if (!shouldCheckNow(lastCheckedAt, now, interval)) return
+      // 시도 시점을 스탬프한다 — 실패해도 피드를 연타하지 않기 위함이다(실패 후 간격은 위에서 줄인다).
+      lastCheckedAt = now
+      try {
+        const result = await deps.check()
+        applyResult(result)
+        if (result.available) deps.notify(result)
+      } catch (e) {
+        consecutiveFailures += 1
+        lastError = classify(e)
+        // name까지 남긴다 — classifyUpdateError가 HttpError를 name으로 가리므로 message만으론 재분류가 안 된다.
+        const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+        log(
+          `[updater] ${trigger} 자동 확인 실패(${lastError}, 연속 ${consecutiveFailures}회)`,
+          detail
+        )
+      }
+    },
+    recordManualCheck: (result) => {
+      lastCheckedAt = deps.now()
+      // feed_unreachable로 정규화된 결과는 "업데이트가 없다"는 정보가 아니다 — 보관값을 건드리지 않는다.
+      if (result.error !== undefined) return
+      applyResult(result)
+    },
+    latest: () => latest,
+    status: () => ({ lastSuccessAt, consecutiveFailures, lastError })
+  }
 }
 
 export function createUpdater(deps: UpdaterDeps): Updater {
@@ -132,7 +233,9 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     })
   }
 
-  async function downloadAndInstall(onProgress?: (progress: UpdateProgress) => void): Promise<void> {
+  async function downloadAndInstall(
+    onProgress?: (progress: UpdateProgress) => void
+  ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const cleanup = (): void => {
         autoUpdater.removeListener('download-progress', onProgressEvt)

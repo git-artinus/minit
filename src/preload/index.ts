@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AppSettings,
+  AutoCheckStatus,
   GithubLoginState,
   GithubLoginStatusEvent,
   RegenerateResult,
@@ -97,9 +98,11 @@ const minutingApi = {
     ipcRenderer.invoke('slack:selectChannel', channelId, channelName),
   // 자동 업데이트(v0.4.0 ③b)
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
-  // 배너가 마운트될 때 이미 감지된 새 버전을 되찾는다 — update:available 이벤트를 놓쳤거나
-  // 창을 나중에 연 경우에도 알림이 복구된다.
+  // 배너가 마운트될 때 이미 감지된 새 버전을 되찾는다 — 기동 확인이 렌더러 구독보다 앞서면
+  // update:available 이벤트가 유실되기 때문이다.
   getLatestUpdate: (): Promise<UpdateCheckResult | null> => ipcRenderer.invoke('update:latest'),
+  // 자동 확인이 계속 실패하면 사용자는 구버전에 고립된 채 아무 신호도 못 받는다 — 설정에서 알린다.
+  getAutoCheckStatus: (): Promise<AutoCheckStatus> => ipcRenderer.invoke('update:autoCheckStatus'),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
   onUpdateAvailable: (cb: (r: UpdateCheckResult) => void) => {
     const listener = (_: unknown, r: UpdateCheckResult) => cb(r)

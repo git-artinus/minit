@@ -8,8 +8,8 @@ import { autoUpdater } from 'electron-updater'
 import { checkEnv, modelFilePath, resolveWhisperCli, systemCommandExists } from './env-check'
 import { downloadModel, modelUrl } from './model-download'
 import {
-  canInstallUpdate, classifyUpdateError, createUpdater, shouldCheckNow,
-  PERIODIC_CHECK_INTERVAL_MS, STARTUP_CHECK_DELAY_MS, WINDOW_SHOW_MIN_INTERVAL_MS,
+  canInstallUpdate, classifyUpdateError, createUpdater, createUpdateNotifier,
+  CHECK_TICK_MS, STARTUP_CHECK_DELAY_MS,
   type AutoUpdaterLike
 } from './updater'
 import * as sink from './recording-sink'
@@ -58,6 +58,7 @@ import { isValidMeetingFilename, parseMeeting, serializeMeeting } from '../share
 import { exportContent, exportFileName, type ExportFormat } from '../shared/share-format'
 import type {
   AppSettings,
+  AutoCheckStatus,
   GithubLoginState,
   Meeting,
   MeetingMeta,
@@ -625,10 +626,19 @@ export function registerIpc(
     onBeforeInstall: opts.onBeforeInstall
   })
 
-  // 이벤트만 쏘면 렌더러가 아직 구독 전일 때 유실된다(지연을 3초로 줄이면 더 잦아진다).
-  // 마지막으로 감지한 새 버전을 여기 보관해 update:latest로 다시 꺼내갈 수 있게 한다.
-  let latestUpdate: UpdateCheckResult | null = null
-  let lastUpdateCheckedAt = 0
+  // 스케줄·보관·실패 집계는 electron 비의존 notifier가 담당한다(단위 테스트 대상). 여기 남는 것은
+  // 타이머·창 이벤트·IPC 배선뿐이다. update:available 이벤트만 쏘면 렌더러가 아직 구독하기 전에
+  // 도착한 알림이 유실되므로(기동 확인이 STARTUP_CHECK_DELAY_MS 뒤라 실제로 앞설 수 있다)
+  // notifier가 마지막 결과를 보관하고 update:latest로 다시 꺼내갈 수 있게 한다.
+  const notifier = createUpdateNotifier({
+    check: () => updater.checkForUpdates(),
+    notify: (result) => {
+      if (!win.isDestroyed()) win.webContents.send('update:available', result)
+      // 창이 파괴됐는데 조용히 넘기면 알림이 영구히 멈춘 것을 아무도 모른다.
+      else console.error('[updater] 창이 파괴돼 새 버전 알림을 전달하지 못했다:', result.version)
+    },
+    now: () => Date.now()
+  })
 
   // 저장소 비공개 상태 업데이트 안내(v0.4.1) — 레포가 public으로 전환되기 전에는 업데이트
   // 피드(GitHub Releases) 조회가 404/HttpError 등으로 실패한다. 이를 classifyUpdateError로
@@ -638,9 +648,8 @@ export function registerIpc(
   ipcMain.handle('update:check', async (): Promise<UpdateCheckResult> => {
     try {
       const result = await updater.checkForUpdates()
-      // 수동 확인도 같은 보관소를 갱신한다 — 설정에서 확인한 뒤 배너가 엇갈리지 않도록.
-      lastUpdateCheckedAt = Date.now()
-      if (result.available) latestUpdate = result
+      // 수동 확인도 같은 보관소·스탬프를 갱신한다 — 설정에서 발견한 새 버전을 배너도 되찾을 수 있다.
+      notifier.recordManualCheck(result)
       return result
     } catch (e) {
       if (classifyUpdateError(e) === 'feed_unreachable') return { available: false, error: 'feed_unreachable' }
@@ -659,41 +668,18 @@ export function registerIpc(
     })
   })
 
-  // 자동 확인 — 기동 직후 1회 + 4시간마다 + 창을 다시 열 때(스로틀).
-  const runUpdateCheck = (label: string): void => {
-    lastUpdateCheckedAt = Date.now()
-    updater
-      .checkForUpdates()
-      .then((result) => {
-        if (!result.available) return
-        latestUpdate = result
-        if (!win.isDestroyed()) win.webContents.send('update:available', result)
-      })
-      .catch((e) => console.error(`[updater] ${label} 자동 확인 실패:`, e instanceof Error ? e.message : e))
-  }
+  ipcMain.handle('update:latest', (): UpdateCheckResult | null => notifier.latest())
+  ipcMain.handle('update:autoCheckStatus', (): AutoCheckStatus => notifier.status())
 
-  ipcMain.handle('update:latest', (): UpdateCheckResult | null => latestUpdate)
-
-  // 기동 직후(네트워크·리소스 경합을 피할 만큼만 지연). 실패는 로그만 남기고 기동을 막지 않는다.
-  setTimeout(() => runUpdateCheck('시작 시'), STARTUP_CHECK_DELAY_MS)
-
-  const periodicCheck = setInterval(() => runUpdateCheck('주기'), PERIODIC_CHECK_INTERVAL_MS)
-
+  // 실패는 notifier가 분류·집계·로깅하고 기동을 막지 않는다.
+  setTimeout(() => void notifier.maybeCheck('startup'), STARTUP_CHECK_DELAY_MS)
+  // 짧게 틱을 돌리고 실제 확인 간격은 notifier가 정한다 — 절전 복귀로 밀린 주기를 빨리 만회하고,
+  // 실패 뒤 재시도도 4시간을 기다리지 않는다. 인터벌은 프로세스 수명과 같다(창을 닫아도 트레이에
+  // 상주하므로 'closed'는 실제 종료 시에만 발화한다 — 그 시점의 정리는 의미가 없다).
+  setInterval(() => void notifier.maybeCheck('periodic'), CHECK_TICK_MS)
   // 트레이 상주 앱이라 창을 닫아도 프로세스는 살아 있다 — 다시 여는 순간이 사용자가 앱을
-  // 의식하는 시점이라 알림을 보기 가장 자연스럽다. 여닫기를 반복해도 연타되지 않게 스로틀한다.
-  const onWindowShow = (): void => {
-    // 기동 시 ready-to-show가 곧바로 show()를 부르므로 이 핸들러도 즉시 한 번 불린다. 그 최초
-    // 표시는 위의 시작 확인이 이미 담당하므로 건너뛴다(같은 조회를 두 번 하지 않는다).
-    if (lastUpdateCheckedAt === 0) return
-    if (!shouldCheckNow(lastUpdateCheckedAt, Date.now(), WINDOW_SHOW_MIN_INTERVAL_MS)) return
-    runUpdateCheck('창 열기')
-  }
-  win.on('show', onWindowShow)
-
-  win.on('closed', () => {
-    clearInterval(periodicCheck)
-    win.removeListener('show', onWindowShow)
-  })
+  // 의식하는 시점이라 알림을 보기 가장 자연스럽다.
+  win.on('show', () => void notifier.maybeCheck('window-show'))
 
   // ── GitHub OAuth(Device Flow) + 동기화(v0.3.0 ③) ──────────────────────────
   // 세션 경합·취소(리뷰 Fix 3) — 실제 fetch/safeStorage/BrowserWindow는 여기서 주입하고,
