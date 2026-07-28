@@ -3,7 +3,7 @@ import starlight from '@astrojs/starlight'
 
 export default defineConfig({
   site: 'https://git-artinus.github.io',
-  base: '/minit',
+  base: '/minit/', // 끝 슬래시 필수 — BASE_URL이 그대로 반환되므로 없으면 ${base}docs/ 가 /minitdocs/ 가 된다
   integrations: [
     starlight({
       title: 'Minit',
