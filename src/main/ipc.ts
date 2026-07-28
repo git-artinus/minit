@@ -18,6 +18,7 @@ import { summarize } from './pipeline/summarizer'
 import { deleteMeeting, isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
 // claude CLI 호출 — 트랜스크립트를 stdin으로 넘긴다. pipeline:run과 summary:regenerate가 공유한다.
 import { runWithStdin } from './pipeline/claude-run'
+import { classifySummaryError } from './pipeline/summary-error'
 import { regenerateSummary } from './pipeline/regenerate'
 import {
   addParticipants, dedupeAndSort, loadRoster, mergeNames, parseImportInput,
@@ -324,11 +325,20 @@ export function registerIpc(
           captured.transcriptFlagged = flagged
           return segments
         },
-        summarize: (segments) =>
-          summarize({
-            run: runWithStdin, title: meta.title, segments,
-            participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
-          }),
+        summarize: async (segments) => {
+          try {
+            return await summarize({
+              run: runWithStdin, title: meta.title, segments,
+              participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
+            })
+          } catch (e) {
+            // 최초 요약도 같은 분류기를 통과시킨다. 이 경로가 실패 빈도가 가장 높은데, 그냥 던지면
+            // pipeline이 message(e)만 담고 그건 'claude 실행 실패 (…)' 한 줄이라 원인이 어디에도
+            // 남지 않는다(로깅은 분류기 안에만 있다). 분류된 detail로 바꿔 던져 진단을 보존한다.
+            const failure = classifySummaryError(e)
+            throw new Error(failure.detail, { cause: e })
+          }
+        },
         save: (meeting) => {
           const withFlag = captured.transcriptFlagged ? { ...meeting, transcriptFlagged: true } : meeting
           captured.meeting = withFlag
