@@ -49,15 +49,6 @@ main {
   margin: var(--sp-3) 0 0;
 }
 
-/* 스크린샷 자리 — 화면 아래로 잘려 스크롤을 유도한다. */
-.shot {
-  margin: var(--sp-7) auto 0;
-  aspect-ratio: 16 / 10;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-md);
-}
 
 .lockup { display: none; }
 .lockup svg { width: 180px; height: auto; }
