@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { UpdateCheckResult, UpdateProgress } from '../../../shared/types'
+import { releaseNotesUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 
 function errMessage(e: unknown): string {
@@ -31,6 +32,13 @@ export function UpdateBanner(): React.JSX.Element | null {
     const off = window.minuting.onUpdateAvailable((r) => {
       if (r.available) setAvailable(r)
     })
+    // 구독 전에 이미 감지됐을 수 있다(main은 기동 3초 뒤 확인한다) — 보관된 결과를 한 번 되찾는다.
+    window.minuting
+      .getLatestUpdate()
+      .then((r) => {
+        if (r?.available) setAvailable((prev) => prev ?? r)
+      })
+      .catch(() => {})
     return () => {
       off()
     }
@@ -60,6 +68,13 @@ export function UpdateBanner(): React.JSX.Element | null {
   return (
     <div className="update-banner">
       <p className="update-banner-title">새 버전 v{available.version}가 있습니다</p>
+      <button
+        type="button"
+        className="link-btn"
+        onClick={() => window.minuting.openExternal(releaseNotesUrl(available.version))}
+      >
+        릴리즈 노트 보기
+      </button>
 
       {!downloading && (
         <div className="setting-path-row">

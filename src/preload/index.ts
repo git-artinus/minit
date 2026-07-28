@@ -97,6 +97,9 @@ const minutingApi = {
     ipcRenderer.invoke('slack:selectChannel', channelId, channelName),
   // 자동 업데이트(v0.4.0 ③b)
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
+  // 배너가 마운트될 때 이미 감지된 새 버전을 되찾는다 — update:available 이벤트를 놓쳤거나
+  // 창을 나중에 연 경우에도 알림이 복구된다.
+  getLatestUpdate: (): Promise<UpdateCheckResult | null> => ipcRenderer.invoke('update:latest'),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
   onUpdateAvailable: (cb: (r: UpdateCheckResult) => void) => {
     const listener = (_: unknown, r: UpdateCheckResult) => cb(r)
