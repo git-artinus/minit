@@ -40,6 +40,17 @@ jobs:
           # 릴리즈 시점 스냅샷으로 되돌려버린다. push/workflow_dispatch는 원래도
           # main 기준이라 동작이 바뀌지 않는다.
           ref: ${{ github.event.repository.default_branch }}
+          # 사이트 빌드에 필요한 것만 받는다. 앱 tsconfig를 디스크에 두지 않는 것이
+          # 핵심이다 — Vite는 워크스페이스 루트(=git 루트) 아래 tsconfig를 스캔·파싱하는데,
+          # 루트 tsconfig.json 이 references로 tsconfig.node.json 을 가리키고 그것이
+          # @electron-toolkit/tsconfig 를 extends 한다. 이 워크플로는 site/ 에서만
+          # npm ci 하므로 그 패키지가 없어 "Tsconfig not found" 로 빌드가 죽는다.
+          # 루트 npm ci 로 해결하면 electron 등 514MB를 받아야 하고 격리도 깨진다.
+          # cone 모드는 최상위 파일을 항상 포함하므로 반드시 꺼야 한다.
+          sparse-checkout: |
+            site/
+            resources/brand/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
