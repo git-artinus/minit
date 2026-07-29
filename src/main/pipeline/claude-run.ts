@@ -1,8 +1,20 @@
 import { execFile } from 'node:child_process'
+import fs from 'node:fs'
+import { minitHome } from '../settings'
 import type { RunWithStdin } from './summarizer'
 
 export const SUMMARY_TIMEOUT_MS = 300_000
 const MAX_BUFFER = 64 * 1024 * 1024
+
+// claude CLI는 실행되면 작업 디렉토리 컨텍스트를 읽는다. Finder/Dock으로 실행된 패키징
+// 앱은 cwd가 '/'라서 CLI의 탐색이 홈 전체로 번지고, ~/Pictures·~/Music·다른 앱 컨테이너
+// 접근이 전부 Minit.app 명의의 TCC 권한 프롬프트로 나타났다(사진·Apple Music·"다른 앱의
+// 데이터" 요청의 원인). 항상 존재를 보장할 수 있는 회의록 홈(~/.minit)으로 고정한다.
+export function claudeWorkdir(): string {
+  const dir = minitHome()
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
 
 /** 실패한 실행에 대해 알아낸 사실 전부. 위치 인자 8개를 피하려고 객체로 묶는다. */
 export interface ClaudeRunFacts {
@@ -56,7 +68,7 @@ export const runWithStdin: RunWithStdin = (cmd, args, stdin, timeoutMs = SUMMARY
     const child = execFile(
       cmd,
       args,
-      { maxBuffer: MAX_BUFFER, timeout: timeoutMs },
+      { maxBuffer: MAX_BUFFER, timeout: timeoutMs, cwd: claudeWorkdir() },
       (err, stdout, stderr) => {
         // 전량 전달 여부는 error 이벤트 플래그가 아니라 스트림 상태로 판정한다 — EPIPE가 이 콜백보다
         // 늦게 도착할 수 있어(실측) 플래그만 보면 놓친다. writableFinished는 모든 데이터가 파이프에
