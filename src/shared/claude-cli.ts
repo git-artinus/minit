@@ -9,4 +9,4 @@ export const CLAUDE_DOCS_URL = 'https://docs.claude.com/en/docs/claude-code/over
 export const CLAUDE_DEPENDENCY_NOTICE =
   'Minit은 이 기기에 설치된 Claude CLI로 회의록을 요약합니다. CLI가 설치되어 있지 않거나, ' +
   '로그인되어 있지 않거나, 사용량이 남아 있지 않으면 요약이 생성되지 않습니다. ' +
-  '(녹음과 받아쓰기는 영향을 받지 않습니다.)'
+  '(그래도 녹음과 받아쓰기는 계속 사용할 수 있습니다.)'

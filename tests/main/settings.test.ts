@@ -16,6 +16,7 @@ describe('loadSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -30,6 +31,7 @@ describe('loadSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -61,6 +63,7 @@ describe('loadSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -89,6 +92,7 @@ describe('loadSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -109,6 +113,7 @@ describe('loadSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -157,6 +162,7 @@ describe('loadSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -316,6 +322,64 @@ describe('loadSettings', () => {
       )
       const result = loadSettings(tempDir, '/default-repo')
       expect(result.githubSync).toBe(true)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+})
+
+describe('loadSettings slackAutoSend 마이그레이션', () => {
+  test('필드가 없고 채널이 선택돼 있으면 true로 이어받는다(도입 이전 "채널 선택 = 자동 발송" 보존)', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify({ repoRoot: '/custom-repo', slackChannelId: 'C123', slackChannelName: '#회의록' }, null, 2)
+      )
+      expect(loadSettings(tempDir, '/default-repo').slackAutoSend).toBe(true)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  test('필드가 없고 채널도 없으면 false다(신규 사용자 기본값)', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify({ repoRoot: '/custom-repo' }, null, 2)
+      )
+      expect(loadSettings(tempDir, '/default-repo').slackAutoSend).toBe(false)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  test('저장된 boolean 값이 있으면 채널 유무와 무관하게 그대로 쓴다(false 명시 존중)', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify(
+          { repoRoot: '/custom-repo', slackChannelId: 'C123', slackChannelName: '#회의록', slackAutoSend: false },
+          null,
+          2
+        )
+      )
+      expect(loadSettings(tempDir, '/default-repo').slackAutoSend).toBe(false)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  test('boolean이 아닌 손상 값이면 채널 유무를 기준으로 재유도한다', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify({ repoRoot: '/custom-repo', slackChannelId: 'C123', slackAutoSend: 'yes' }, null, 2)
+      )
+      expect(loadSettings(tempDir, '/default-repo').slackAutoSend).toBe(true)
     } finally {
       fs.rmSync(tempDir, { recursive: true })
     }
@@ -501,6 +565,8 @@ describe('saveSettings', () => {
         slackChannelId: 'C123',
         slackChannelName: '#회의록',
         slackPromptShown: true,
+        // 채널이 있어도 명시적 false는 마이그레이션이 덮지 않는다(왕복 보존 확인).
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -527,6 +593,7 @@ describe('saveSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -541,6 +608,7 @@ describe('saveSettings', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -564,6 +632,7 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
         slackChannelId: null,
         slackChannelName: null,
         slackPromptShown: false,
+        slackAutoSend: false,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -595,14 +664,15 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
     try {
       saveSettings(tempDir, {
         repoRoot: '/r', modelName: 'm', autoPush: true,
-        slackChannelId: null, slackChannelName: null, slackPromptShown: false,
+        slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false,
         githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
       })
       const raw = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))
       expect(Object.keys(raw).sort()).toEqual(
         [
           'repoRoot', 'modelName', 'autoPush', 'slackChannelId', 'slackChannelName',
-          'slackPromptShown', 'githubRepo', 'githubPromptShown', 'githubSync', 'pendingUploads', 'pendingDeletes',
+          'slackPromptShown', 'slackAutoSend', 'githubRepo', 'githubPromptShown', 'githubSync',
+          'pendingUploads', 'pendingDeletes',
         ].sort()
       )
     } finally {
@@ -616,7 +686,7 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
       fs.writeFileSync(path.join(tempDir, 'settings.json'), '{broken')
       saveSettings(tempDir, {
         repoRoot: '/r', modelName: 'm', autoPush: true,
-        slackChannelId: null, slackChannelName: null, slackPromptShown: false,
+        slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false,
         githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
       })
       const raw = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))

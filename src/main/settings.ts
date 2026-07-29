@@ -6,7 +6,10 @@ export interface Settings {
   repoRoot: string; modelName: string; autoPush: boolean
   // Slack 연동(v0.4.0 ②) — 봇 토큰 자체는 여기 저장하지 않는다(slack-token-store.ts가 별도
   // 암호화 파일로 관리). 채널은 드롭다운에서 선택한 채널 ID를 저장하고, 이름은 표시용으로만 둔다.
+  // slackAutoSend — 회의 종료 후 자동 발송 여부. 채널(slackChannelId)은 "기본 알림 채널"로
+  // 유지한 채 자동 발송만 끌 수 있다(꺼도 회의 시작 override·공유 버튼으로 수동 발송 가능).
   slackChannelId: string | null; slackChannelName: string | null; slackPromptShown: boolean
+  slackAutoSend: boolean
   // GitHub 연동(v0.3.0 ③) — 토큰 자체는 여기 저장하지 않는다(github/token-store.ts가 별도
   // 암호화 파일로 관리). pendingUploads는 내부 관리 필드(ipc.ts settings:update patch로는
   // 변경할 수 없다 — 업로드 실패 시 큐에 추가·재시도 성공 시 제거는 sync.ts가 담당). githubSync는
@@ -73,6 +76,7 @@ function normalizeSettings(merged: Settings, defaults: Settings): Settings {
     autoPush: typeof merged.autoPush === 'boolean' ? merged.autoPush : defaults.autoPush,
     githubSync: typeof merged.githubSync === 'boolean' ? merged.githubSync : defaults.githubSync,
     slackPromptShown: typeof merged.slackPromptShown === 'boolean' ? merged.slackPromptShown : defaults.slackPromptShown,
+    slackAutoSend: typeof merged.slackAutoSend === 'boolean' ? merged.slackAutoSend : defaults.slackAutoSend,
     githubPromptShown:
       typeof merged.githubPromptShown === 'boolean' ? merged.githubPromptShown : defaults.githubPromptShown
   }
@@ -82,7 +86,7 @@ export function loadSettings(userDataDir: string, defaultRepoRoot: string): Sett
   const file = path.join(userDataDir, 'settings.json')
   const defaults: Settings = {
     repoRoot: defaultRepoRoot, modelName: 'ggml-large-v3-turbo.bin', autoPush: true,
-    slackChannelId: null, slackChannelName: null, slackPromptShown: false,
+    slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false,
     githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
   }
 
@@ -97,6 +101,12 @@ export function loadSettings(userDataDir: string, defaultRepoRoot: string): Sett
     // 여기서도 방어적으로 걸러내 stray 필드가 settings.json에 남지 않게 한다.
     delete parsed.slackBotToken
     delete parsed.slackChannel
+    // slackAutoSend 마이그레이션 — 필드 도입 이전 설정에는 값이 없다. 그때까지는 "채널 선택
+    // = 자동 발송"이었으므로, 채널이 있으면 true로 이어받아 기존 사용자의 동작을 보존한다
+    // (신규 기본값은 false — 연동만 하고 자동 발송은 명시적으로 켜는 쪽이 안전하다).
+    if (typeof parsed.slackAutoSend !== 'boolean') {
+      parsed.slackAutoSend = typeof parsed.slackChannelId === 'string'
+    }
     return normalizeSettings({ ...defaults, ...parsed }, defaults)
   } catch (error) {
     // File missing → write defaults and return

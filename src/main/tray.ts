@@ -34,9 +34,10 @@ export function createTray(deps: {
   const rebuild = (): void => {
     tray.setContextMenu(
       Menu.buildFromTemplate([
+        // "바로" — 클릭 즉시 모달 없이 녹음이 시작되는 동작임을 라벨에서 알린다.
         recording
           ? { label: '회의 종료', click: deps.onStop }
-          : { label: '회의 시작', click: deps.onStart },
+          : { label: '바로 회의 시작', click: deps.onStart },
         { label: 'Minit 열기', click: deps.onOpen },
         { type: 'separator' },
         { label: '종료', click: deps.onQuit }

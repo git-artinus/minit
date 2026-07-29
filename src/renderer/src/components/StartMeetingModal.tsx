@@ -8,7 +8,8 @@ import {
   CHANNEL_DEFAULT,
   CHANNEL_NONE,
   channelOverrideToValue,
-  channelValueToOverride
+  channelValueToOverride,
+  defaultChannelOptionLabel
 } from './start-meeting-channel'
 
 export function StartMeetingModal(props: {
@@ -27,7 +28,11 @@ export function StartMeetingModal(props: {
 
   // Slack 채널 override(#2) — undefined=설정 기본값 사용 / null=발송 안 함 / string=이 채널로.
   const [channelOverride, setChannelOverride] = useState<string | null | undefined>(undefined)
-  const [slackDefault, setSlackDefault] = useState<{ id: string | null; name: string | null }>({ id: null, name: null })
+  const [slackDefault, setSlackDefault] = useState<{ id: string | null; name: string | null; autoSend: boolean }>({
+    id: null,
+    name: null,
+    autoSend: false
+  })
   const [slackTokenSaved, setSlackTokenSaved] = useState(false)
   const [slackChannels, setSlackChannels] = useState<SlackChannel[] | null>(null)
 
@@ -41,7 +46,9 @@ export function StartMeetingModal(props: {
   useEffect(() => {
     window.minuting
       .getSettings()
-      .then((s: AppSettings) => setSlackDefault({ id: s.slackChannelId, name: s.slackChannelName }))
+      .then((s: AppSettings) =>
+        setSlackDefault({ id: s.slackChannelId, name: s.slackChannelName, autoSend: s.slackAutoSend })
+      )
       .catch(() => {})
     window.minuting
       .getSlackTokenState()
@@ -224,7 +231,7 @@ export function StartMeetingModal(props: {
         )}
         {slackTokenSaved && (
           <div className="chip-group">
-            <div className="chip-group-label">요약 발송</div>
+            <div className="chip-group-label">요약 자동 발송</div>
             <SlackChannelSelect
               channels={slackChannels}
               value={channelOverrideToValue(channelOverride)}
@@ -233,7 +240,7 @@ export function StartMeetingModal(props: {
               leading={
                 <>
                   <option value={CHANNEL_DEFAULT}>
-                    기본 채널{slackDefault.name ? ` (# ${slackDefault.name})` : ' (설정 안 됨)'}
+                    {defaultChannelOptionLabel(slackDefault.autoSend, slackDefault.name)}
                   </option>
                   <option value={CHANNEL_NONE}>(발송 안 함)</option>
                 </>

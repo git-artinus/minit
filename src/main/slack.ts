@@ -206,6 +206,16 @@ export function notifySlackForMeeting(
   if (token) send(meeting, token, channelId, { ...defaultDeps, notifyFailure })
 }
 
+// 설정이 정하는 유효 기본 발송 채널 — 자동 발송(slackAutoSend)이 꺼져 있으면 기본 알림
+// 채널이 선택돼 있어도 자동 발송하지 않는다(null). 채널 자체는 회의 시작 override·공유
+// 모달의 후보로 계속 쓰이므로, 발송 여부 판단은 채널 저장값이 아니라 이 함수를 거친다.
+export function defaultSlackChannelId(settings: {
+  slackChannelId: string | null
+  slackAutoSend: boolean
+}): string | null {
+  return settings.slackAutoSend ? settings.slackChannelId : null
+}
+
 // 회의별 채널 override(3-상태)를 설정 기본값과 합쳐 최종 발송 채널을 정한다.
 // undefined = override 안 함(기본값 사용) / null = 이번 회의 발송 안 함 / string = 이 채널로.
 export function resolveSlackChannelId(

@@ -84,7 +84,9 @@ export interface Roster { participants: string[] }
 export interface AppSettings {
   repoRoot: string; autoPush: boolean
   // Slack 봇 토큰 자체는 절대 렌더러로 반환하지 않는다(slack:tokenState의 saved만 노출).
+  // slackChannelId는 "기본 알림 채널" — 자동 발송 여부는 slackAutoSend가 별도로 정한다.
   slackChannelId: string | null; slackChannelName: string | null; slackPromptShown: boolean
+  slackAutoSend: boolean
   githubRepo: string | null; githubPromptShown: boolean
   // GitHub 자동 동기화(업로드·pull) 실행 여부(v0.4.0 ④) — 레포를 처음 선택하면 자동으로 켜진다.
   githubSync: boolean
