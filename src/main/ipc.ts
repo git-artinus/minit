@@ -21,7 +21,8 @@ import { transcribeAndRepair } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
 import { deleteMeeting, isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
 import { runWithStdin } from './pipeline/claude-run'
-import { classifySummaryError } from './pipeline/summary-error'
+import { classifyClaudeFailure } from './pipeline/summary-error'
+import { availabilityEvidence, createClaudeStatusChecker, probeClaude } from './claude-status'
 import { regenerateSummary } from './pipeline/regenerate'
 import {
   addParticipants, dedupeAndSort, loadRoster, mergeNames, parseImportInput,
@@ -166,6 +167,18 @@ export function registerIpc(
 
   ipcMain.handle('env:check', () =>
     checkEnv({ commandExists: systemCommandExists, modelPath, repoRoot: settings.repoRoot, appRoot, fileExists: fs.existsSync }))
+
+  // env:check와 분리한다 — which는 즉시 끝나지만 이건 claude를 실제로 실행해 사용량을 쓴다.
+  // 같은 핸들러에 넣으면 환경 재검사(모델 다운로드 후 등)마다 사용량이 나간다.
+  const claudeStatus = createClaudeStatusChecker(
+    () => probeClaude({ commandExists: systemCommandExists, run: runWithStdin }),
+    // 조회는 앱 실행 시 1회뿐이고 [다시 확인]은 캐시를 우회한다. 이 통지가 없으면 요약 실행이
+    // 알아낸 사실이 main에만 남아, 요약이 로그인 문제로 실패했는데 설정 화면은 계속
+    // "사용 가능"이라고 말하게 된다.
+    (status) => {
+      if (!win.isDestroyed()) win.webContents.send('claude:status-changed', status)
+    })
+  ipcMain.handle('claude:status', (_e, force: boolean) => claudeStatus.get(force === true))
 
   ipcMain.handle('model:ensure', () =>
     downloadModel({
@@ -331,15 +344,19 @@ export function registerIpc(
         },
         summarize: async (segments) => {
           try {
-            return await summarize({
+            const result = await summarize({
               run: runWithStdin, title: meta.title, segments,
               participants: meta.participants ?? [], typeDef: meetingTypeDef(meta.meetingType),
             })
+            // 방금 요약이 됐다는 건 claude가 사용 가능하다는 뜻이다 — 프로브를 다시 돌릴 이유가 없다.
+            claudeStatus.record({ kind: 'available' })
+            return result
           } catch (e) {
             // 최초 요약도 같은 분류기를 통과시킨다. 이 경로가 실패 빈도가 가장 높은데, 그냥 던지면
             // pipeline이 message(e)만 담고 그건 'claude 실행 실패 (…)' 한 줄이라 원인이 어디에도
             // 남지 않는다(로깅은 분류기 안에만 있다). 분류된 detail로 바꿔 던져 진단을 보존한다.
-            const failure = classifySummaryError(e)
+            const failure = classifyClaudeFailure(e, '요약')
+            claudeStatus.record(availabilityEvidence(failure))
             throw new Error(failure.detail, { cause: e })
           }
         },
@@ -534,6 +551,8 @@ export function registerIpc(
       git: systemGit(settings.repoRoot),
       autoSync: settings.autoPush,
     })
+    // 재생성은 claude를 실제로 돌린 결과라 프로브보다 확실한 증거다(성공·실패 양쪽 모두).
+    claudeStatus.record(result.ok ? { kind: 'available' } : availabilityEvidence(result.failure))
     if (!result.ok) return result
     // pipeline:run과 동일한 후처리 경로 — 요약이 갱신된 뒤에만 Slack 발송을 시도한다(실패 격리 동일).
     notifySlackForMeeting(

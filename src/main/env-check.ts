@@ -50,10 +50,9 @@ export async function checkEnv(deps: {
   appRoot: string
   fileExists: (p: string) => boolean
 }): Promise<EnvReport> {
-  const [git, claude, whisperCli] = await Promise.all([
+  const [git, whisperCli] = await Promise.all([
     deps.commandExists('git'),
-    deps.commandExists('claude'),
     resolveWhisperCli({ appRoot: deps.appRoot, fileExists: deps.fileExists, commandExists: deps.commandExists }),
   ])
-  return { git, claude, whisper: whisperCli !== null, model: deps.fileExists(deps.modelPath), repoRoot: deps.repoRoot }
+  return { git, whisper: whisperCli !== null, model: deps.fileExists(deps.modelPath), repoRoot: deps.repoRoot }
 }

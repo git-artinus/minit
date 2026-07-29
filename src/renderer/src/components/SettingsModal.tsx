@@ -9,6 +9,7 @@ import type {
   UpdateProgress
 } from '../../../shared/types'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
+import { claudeStatusView } from '../state/claude-status-view'
 import { releaseNotesUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
@@ -63,10 +64,11 @@ export function SettingsModal(props: {
   const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
   const [slackError, setSlackError] = useState<string | null>(null)
 
-  // Claude CLI 상태(#8) — which claude 결과를 그대로 쓴다(사용량을 소모하는 사전 스모크 테스트는
-  // 하지 않는다). env는 SetupProvider가 단일 소스로 들고 있다 — 각자 조회하면 이 화면과 설치
-  // 패널이 서로 다른 상태를 보여준다.
-  const { env, envError, rechecking: envChecking, recheck: recheckClaude } = useSetup()
+  // Claude CLI 상태(#8) — 설치 여부(which)가 아니라 실제 실행 결과다. 상태는 SetupProvider가
+  // 단일 소스로 들고 있다 — 각자 조회하면 이 화면과 설치 패널이 서로 다른 상태를 보여주고,
+  // 무엇보다 확인 때마다 사용량이 나간다.
+  const { claude, claudeError, claudeChecking, recheckClaude } = useSetup()
+  const claudeStatus = claude === null ? null : claudeStatusView(claude)
   const [installCopied, setInstallCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
 
@@ -332,10 +334,12 @@ export function SettingsModal(props: {
           <div className="setting-label">Claude</div>
           <div className="setting-desc">{CLAUDE_DEPENDENCY_NOTICE}</div>
           <div className="setting-path-row">
-            {/* which claude가 증명하는 건 "설치"뿐이다. GitHub의 "연결됨"(토큰 검증 완료)과
-                같은 어휘를 쓰면 로그인 안 된 상태를 사용 가능으로 오해하게 된다. */}
+            {/* "연결됨"(GitHub 섹션의 어휘)을 쓰지 않는다 — 저쪽은 앱이 쥔 토큰 상태고 이쪽은
+                기기의 CLI가 지금 응답하는지다. 같은 말로 묶으면 서로 다른 것을 같게 읽는다.
+                재확인이 실패해도 직전 판정을 라벨로 유지한다. '확인 실패'로 덮으면 아래 조치
+                안내(직전 판정 기준)와 출처가 갈려 라벨은 모른다고, 본문은 안다고 말하게 된다. */}
             <div className="setting-desc">
-              {envError !== null ? '확인 실패' : env === null ? '확인 중…' : env.claude ? '설치됨' : '미설치'}
+              {claudeStatus !== null ? claudeStatus.label : claudeError !== null ? '확인 실패' : '확인 중…'}
             </div>
             <button
               type="button"
@@ -343,17 +347,25 @@ export function SettingsModal(props: {
               onClick={() => {
                 recheckClaude().catch(() => {})
               }}
-              disabled={envChecking}
+              disabled={claudeChecking}
             >
-              {envChecking ? '확인 중…' : '다시 확인'}
+              {claudeChecking ? '확인 중…' : '다시 확인'}
             </button>
           </div>
           {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
-          {envError !== null && <p className="setting-error">환경 확인 실패: {envError}</p>}
+          {claudeError !== null && (
+            <p className="setting-error">
+              상태 확인 실패: {claudeError}
+              {claudeStatus !== null && ' (아래는 직전 확인 결과입니다)'}
+            </p>
+          )}
 
-          {env !== null && !env.claude && (
+          {claudeStatus !== null && claudeStatus.hint !== null && (
+            <div className="setting-desc">{claudeStatus.hint}</div>
+          )}
+
+          {claudeStatus?.showInstall && (
             <>
-              <div className="setting-desc">터미널에서 아래 명령으로 설치한 뒤 [다시 확인]을 누르세요.</div>
               <div className="setting-path-row">
                 <div className="setting-path" title={CLAUDE_INSTALL_COMMAND}>
                   {CLAUDE_INSTALL_COMMAND}
@@ -373,12 +385,9 @@ export function SettingsModal(props: {
             </>
           )}
 
-          {env?.claude && (
-            // 로그인은 대화형 CLI 절차라 앱이 대신할 수 없다. 안내 + 재검사 루프가 최선이다.
-            <div className="setting-desc">
-              요약이 계속 실패한다면 터미널에서 claude 를 실행해 로그인 상태와 남은 사용량을 확인하세요.
-            </div>
-          )}
+          {/* 사유를 특정하지 못한 경우에만 원문이 실려 온다. 이게 없으면 '확인 실패'가 무엇
+              때문인지 알 방법이 렌더러 어디에도 남지 않는다(패키징된 앱은 콘솔을 볼 수 없다). */}
+          {claudeStatus?.detail != null && <p className="setting-error">{claudeStatus.detail}</p>}
         </div>
 
         <div className="setting-row">

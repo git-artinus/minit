@@ -107,11 +107,11 @@ function forLog(text: string): string {
 // 모든 사유를 남긴다. 이게 없으면 실패 원인이 휘발성 렌더러 상태로만 존재해 화면을 벗어나는
 // 순간 사라진다. 단, 이 레포엔 파일 로거가 없어 패키징된 앱의 stderr는 사용자가 회수할 수 없다 —
 // 개발 실행(`npm run dev`)에서 원인을 확인하는 용도다(파일 로깅은 후속 과제).
-function logFailure(failure: SummaryFailure, e: unknown): void {
-  const context: Record<string, unknown> = { reason: failure.reason }
+function logFailure(context: string, failure: SummaryFailure, e: unknown): void {
+  const fields: Record<string, unknown> = { reason: failure.reason }
   if (e instanceof ClaudeRunError) {
     const { run } = e
-    Object.assign(context, {
+    Object.assign(fields, {
       exitCode: run.exitCode,
       errorCode: run.errorCode,
       signal: run.signal,
@@ -122,19 +122,22 @@ function logFailure(failure: SummaryFailure, e: unknown): void {
       stderr: forLog(run.stderr)
     })
   } else if (e instanceof InvalidOutputError) {
-    context.raw = forLog(e.raw)
+    fields.raw = forLog(e.raw)
   } else if (e instanceof Error) {
-    context.stack = e.stack
+    fields.stack = e.stack
   }
-  console.error('[summary] 요약 실패', context)
+  console.error(`[claude] ${context} 실패`, fields)
 }
 
 /**
- * 요약 실패 원인 분류. ClaudeRunError·InvalidOutputError가 아니면 즉시 unknown으로 떨어진다 —
- * 회의록 파일 부재나 git 미설치의 ENOENT를 "claude 미설치"로 오진단하지 않기 위함이다.
+ * claude 실행 실패 원인 분류. ClaudeRunError·InvalidOutputError가 아니면 즉시 unknown으로
+ * 떨어진다 — 회의록 파일 부재나 git 미설치의 ENOENT를 "claude 미설치"로 오진단하지 않기 위함이다.
+ *
+ * context는 로그 식별용이다. 요약 생성과 상태 확인이 같은 분류기를 쓰는데 로그 문구가 하나면
+ * 어느 쪽이 실패했는지 구분할 수 없다.
  */
-export function classifySummaryError(e: unknown): SummaryFailure {
+export function classifyClaudeFailure(e: unknown, context: string): SummaryFailure {
   const failure = describe(e)
-  logFailure(failure, e)
+  logFailure(context, failure, e)
   return failure
 }
