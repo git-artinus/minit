@@ -30,7 +30,7 @@ import {
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { buildPostMessageBody, listChannels, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
+import { buildPostMessageBody, defaultSlackChannelId, listChannels, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
 import { deleteToken as deleteGithubToken, loadToken as loadGithubToken, saveToken as saveGithubToken } from './github/token-store'
@@ -153,7 +153,7 @@ export function registerIpc(
   const toAppSettings = (): AppSettings => ({
     repoRoot: settings.repoRoot, autoPush: settings.autoPush,
     slackChannelId: settings.slackChannelId, slackChannelName: settings.slackChannelName,
-    slackPromptShown: settings.slackPromptShown,
+    slackPromptShown: settings.slackPromptShown, slackAutoSend: settings.slackAutoSend,
     githubRepo: settings.githubRepo, githubPromptShown: settings.githubPromptShown, githubSync: settings.githubSync,
     defaultRepoRoot: configDir,
     repoRootIsGitRepo: isGitRepo(settings.repoRoot),
@@ -383,7 +383,7 @@ export function registerIpc(
         // summary:regenerate 성공 후에도 동일 경로(notifySlackForMeeting)를 탄다.
         notifySlackForMeeting(
           meeting,
-          resolveSlackChannelId(meta.slackChannelId, settings.slackChannelId),
+          resolveSlackChannelId(meta.slackChannelId, defaultSlackChannelId(settings)),
           () => loadSlackToken(configDir, { fs, safeStorage }),
           sendSlackFailureNotice
         )
@@ -557,7 +557,7 @@ export function registerIpc(
     // pipeline:run과 동일한 후처리 경로 — 요약이 갱신된 뒤에만 Slack 발송을 시도한다(실패 격리 동일).
     notifySlackForMeeting(
       result.meeting,
-      settings.slackChannelId,
+      defaultSlackChannelId(settings),
       () => loadSlackToken(configDir, { fs, safeStorage }),
       sendSlackFailureNotice
     )
@@ -568,7 +568,7 @@ export function registerIpc(
 
   ipcMain.handle('settings:update', (_e, patch: {
     repoRoot?: string; autoPush?: boolean
-    slackPromptShown?: boolean
+    slackPromptShown?: boolean; slackAutoSend?: boolean
     githubRepo?: string | null; githubPromptShown?: boolean; githubSync?: boolean
   }): AppSettings => {
     if (patch.repoRoot !== undefined) {
@@ -582,6 +582,9 @@ export function registerIpc(
     }
     if ('slackPromptShown' in patch && typeof patch.slackPromptShown !== 'boolean') {
       throw new Error('invalid slackPromptShown')
+    }
+    if ('slackAutoSend' in patch && typeof patch.slackAutoSend !== 'boolean') {
+      throw new Error('invalid slackAutoSend')
     }
     if ('githubRepo' in patch) {
       const v = patch.githubRepo
@@ -787,7 +790,7 @@ export function registerIpc(
     deleteSlackToken(configDir, { fs })
     // github:logout과 동일한 원칙(리뷰 Fix 5) — 토큰 없이 채널 선택만 남으면 다음에 새 토큰을
     // 등록했을 때 검증되지 않은 채널로 발송될 수 있다.
-    settings = { ...settings, slackChannelId: null, slackChannelName: null }
+    settings = { ...settings, slackChannelId: null, slackChannelName: null, slackAutoSend: false }
     saveSettings(configDir, settings)
   })
 
@@ -805,12 +808,28 @@ export function registerIpc(
 
       // v0.4.4 — 자동 참여(conversations.join) 제거. 목록 자체가 봇이 실제 참여 중인 채널만
       // 보여주므로(listChannels 참고) 선택 시 join 시도가 애초에 불필요하다. channelId/name 저장만 한다.
-      settings = { ...settings, slackChannelId: channelId, slackChannelName: channelName }
+      // 채널을 처음 선택하는 시점(null → 값)에는 자동 발송을 자동으로 켠다 — githubRepo 첫
+      // 선택 시 githubSync를 켜는 관례와 동일. 이후 채널만 바꾸는 경우에는 사용자가 정한
+      // slackAutoSend 값을 건드리지 않는다.
+      const firstSelection = settings.slackChannelId === null
+      settings = {
+        ...settings,
+        slackChannelId: channelId,
+        slackChannelName: channelName,
+        slackAutoSend: firstSelection ? true : settings.slackAutoSend
+      }
       saveSettings(configDir, settings)
 
       return toAppSettings()
     }
   )
+
+  // 기본 알림 채널 해제 — 채널이 없으면 자동 발송도 의미가 없으므로 함께 내린다.
+  ipcMain.handle('slack:clearChannel', (): AppSettings => {
+    settings = { ...settings, slackChannelId: null, slackChannelName: null, slackAutoSend: false }
+    saveSettings(configDir, settings)
+    return toAppSettings()
+  })
 
   // ── 회의록 공유(수동) ──────────────────────────────────────────────────
   // 저장 직후 자동 발송(notifySlackForMeeting)과 달리 사용자가 직접 누른 액션이므로 실패를

@@ -85,7 +85,7 @@ const minutingApi = {
   updateSettings: (
     patch: {
       repoRoot?: string; autoPush?: boolean
-      slackPromptShown?: boolean
+      slackPromptShown?: boolean; slackAutoSend?: boolean
       githubRepo?: string | null; githubPromptShown?: boolean; githubSync?: boolean
     }
   ): Promise<AppSettings> => ipcRenderer.invoke('settings:update', patch),
@@ -111,6 +111,7 @@ const minutingApi = {
   listSlackChannels: (): Promise<SlackChannel[]> => ipcRenderer.invoke('slack:listChannels'),
   selectSlackChannel: (channelId: string, channelName: string): Promise<AppSettings> =>
     ipcRenderer.invoke('slack:selectChannel', channelId, channelName),
+  clearSlackChannel: (): Promise<AppSettings> => ipcRenderer.invoke('slack:clearChannel'),
   // 자동 업데이트(v0.4.0 ③b)
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
   // 배너가 마운트될 때 이미 감지된 새 버전을 되찾는다 — 기동 확인이 렌더러 구독보다 앞서면

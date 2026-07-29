@@ -318,6 +318,8 @@ body {
    규격(theme.css 버튼 시스템)을 그대로 따르며 여기서 개별로 덮어쓰지 않는다(오너 피드백 —
    화면마다 버튼 크기가 달라지는 문제 재발 방지). */
 .setting-label { font-weight: 600; }
+/* 한 setting-row 안의 하위 묶음 제목(예: Slack의 기본 알림 채널·자동 발송) — 행 라벨보다 한 단계 작다. */
+.setting-sublabel { font-weight: 600; font-size: var(--fs-base); margin-top: var(--sp-2); }
 .setting-desc { color: var(--color-text-muted); line-height: 1.5; }
 .setting-path-row { display: flex; align-items: center; gap: var(--sp-2); }
 .setting-path {

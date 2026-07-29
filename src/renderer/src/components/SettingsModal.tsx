@@ -216,7 +216,7 @@ export function SettingsModal(props: {
       await window.minuting.clearSlackToken()
       setSlackToken({ saved: false })
       setSlackChannels(null)
-      setSettings((s) => (s ? { ...s, slackChannelId: null, slackChannelName: null } : s))
+      setSettings((s) => (s ? { ...s, slackChannelId: null, slackChannelName: null, slackAutoSend: false } : s))
     } catch {
       setSlackError('연동 해제에 실패했습니다.')
     }
@@ -229,6 +229,26 @@ export function SettingsModal(props: {
       setSettings(updated)
     } catch (e) {
       setSlackError('채널 선택에 실패했습니다: ' + errMessage(e))
+    }
+  }
+
+  const clearSlackChannel = async (): Promise<void> => {
+    setSlackError(null)
+    try {
+      const updated = await window.minuting.clearSlackChannel()
+      setSettings(updated)
+    } catch (e) {
+      setSlackError('채널 해제에 실패했습니다: ' + errMessage(e))
+    }
+  }
+
+  const updateSlackAutoSend = async (slackAutoSend: boolean): Promise<void> => {
+    setSlackError(null)
+    try {
+      const updated = await window.minuting.updateSettings({ slackAutoSend })
+      setSettings(updated)
+    } catch (e) {
+      setSlackError('자동 발송 설정을 저장하지 못했습니다: ' + errMessage(e))
     }
   }
 
@@ -453,7 +473,7 @@ export function SettingsModal(props: {
         <div className="setting-row">
           <div className="setting-label">연동 (Slack)</div>
           <div className="setting-desc">
-            회의가 끝나면 요약을 지정한 채널로 자동 발송합니다. 봇 토큰은 암호화해 보관하며 렌더러 화면에는 절대
+            회의 요약을 보낼 기본 알림 채널을 지정합니다. 봇 토큰은 암호화해 보관하며 렌더러 화면에는 절대
             평문으로 표시되지 않습니다.
           </div>
 
@@ -461,7 +481,7 @@ export function SettingsModal(props: {
             <>
               <div className="setting-desc">① 워크스페이스 관리자에게 봇 토큰(xoxb-…)을 공유받습니다</div>
               <div className="setting-desc">② 아래 [봇 토큰 입력]으로 붙여넣고 저장합니다</div>
-              <div className="setting-desc">③ 저장 후 나타나는 드롭다운에서 발송받을 채널을 선택합니다</div>
+              <div className="setting-desc">③ 저장 후 나타나는 드롭다운에서 기본 알림 채널을 선택합니다</div>
               <div className="setting-path-row">
                 <button type="button" className="btn-ghost" onClick={() => setSlackTokenEditing(true)}>
                   봇 토큰 입력
@@ -509,6 +529,7 @@ export function SettingsModal(props: {
                 </button>
               </div>
 
+              <div className="setting-sublabel">기본 알림 채널</div>
               <div className="setting-desc">
                 Minit 봇을 초대한 채널만 아래 목록에 나타납니다. 채널에서 [채널명 → 통합 → 앱 → Minit 추가]로
                 초대하세요.
@@ -523,12 +544,16 @@ export function SettingsModal(props: {
                   value={settings?.slackChannelId ?? ''}
                   onFocus={loadSlackChannelOptions}
                   onChange={(value) => {
+                    if (value === '') {
+                      clearSlackChannel()
+                      return
+                    }
                     const channel = (slackChannels ?? []).find((c) => c.id === value)
                     if (channel) selectSlackChannel(channel)
                   }}
                   leading={
                     <>
-                      <option value="">채널을 선택하세요</option>
+                      <option value="">(선택 안 함)</option>
                       {slackChannels === null && settings?.slackChannelId && (
                         <option value={settings.slackChannelId}>
                           {settings.slackChannelName ? `# ${settings.slackChannelName}` : settings.slackChannelId}
@@ -543,9 +568,29 @@ export function SettingsModal(props: {
                   {slackChannelsLoading ? '불러오는 중…' : '채널 목록 새로고침'}
                 </button>
                 <span className="setting-desc">
-                  현재 채널: {settings?.slackChannelName ? `#${settings.slackChannelName}` : '선택 안 함'}
+                  기본 알림 채널: {settings?.slackChannelName ? `#${settings.slackChannelName}` : '선택 안 함'}
                 </span>
               </div>
+
+              <div className="setting-sublabel">회의 종료 후 자동 발송</div>
+              <div className="setting-desc">
+                끄면 회의가 끝나도 자동으로 보내지 않습니다. 회의 시작 시 채널을 지정하거나, 회의록의 공유
+                버튼으로 직접 보낼 수 있습니다.
+              </div>
+              <button
+                type="button"
+                className={`switch${settings?.slackAutoSend ? ' on' : ''}`}
+                role="switch"
+                aria-checked={settings?.slackAutoSend ?? false}
+                aria-label="회의 종료 후 자동 발송"
+                disabled={!settings?.slackChannelId}
+                onClick={() => updateSlackAutoSend(!(settings?.slackAutoSend ?? false))}
+              >
+                <span className="switch-knob" />
+              </button>
+              {!settings?.slackChannelId && (
+                <div className="setting-desc">기본 알림 채널을 먼저 선택하면 켤 수 있습니다.</div>
+              )}
             </>
           )}
           {slackError && <p className="setting-error">{slackError}</p>}

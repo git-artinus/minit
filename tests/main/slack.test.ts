@@ -5,6 +5,7 @@ import {
   listChannels,
   notifySlackForMeeting,
   postChatMessage,
+  defaultSlackChannelId,
   resolveSlackChannelId,
   sendSlackNotification
 } from '../../src/main/slack'
@@ -501,5 +502,27 @@ describe('resolveSlackChannelId', () => {
   })
   test('override 미지정이고 기본값도 없으면 null', () => {
     expect(resolveSlackChannelId(undefined, null)).toBeNull()
+  })
+})
+
+describe('defaultSlackChannelId', () => {
+  test('자동 발송이 켜져 있으면 기본 알림 채널을 반환한다', () => {
+    expect(defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: true })).toBe('C_DEFAULT')
+  })
+  test('자동 발송이 꺼져 있으면 채널이 선택돼 있어도 null이다', () => {
+    expect(defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: false })).toBeNull()
+  })
+  test('채널이 없으면 자동 발송이 켜져 있어도 null이다', () => {
+    expect(defaultSlackChannelId({ slackChannelId: null, slackAutoSend: true })).toBeNull()
+  })
+
+  // 회의별 override와의 합성 — 자동 발송이 꺼져 있어도 회의 시작에서 채널을 지정하면 발송된다.
+  test('자동 발송 꺼짐 + 회의별 채널 지정이면 그 채널로 발송한다', () => {
+    const fallback = defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: false })
+    expect(resolveSlackChannelId('C_OVERRIDE', fallback)).toBe('C_OVERRIDE')
+  })
+  test('자동 발송 꺼짐 + override 미지정이면 발송하지 않는다', () => {
+    const fallback = defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: false })
+    expect(resolveSlackChannelId(undefined, fallback)).toBeNull()
   })
 })
