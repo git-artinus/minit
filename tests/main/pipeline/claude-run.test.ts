@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { ClaudeRunError, runWithStdin } from '../../../src/main/pipeline/claude-run'
+import { ClaudeRunError, claudeWorkdir, runWithStdin } from '../../../src/main/pipeline/claude-run'
+import fs from 'node:fs'
 
 async function expectRunError(
   cmd: string,
@@ -125,5 +126,12 @@ describe('runWithStdin', () => {
   test('message에 최소 단서를 담는다(분류기를 안 거치는 핸들러 대비)', async () => {
     const err = await expectRunError('sh', ['-c', 'exit 3'], '')
     expect(err.message).toContain('exit 3')
+  })
+})
+
+describe('claude 실행 작업 디렉토리(TCC 프롬프트 억제)', () => {
+  test('자식 프로세스의 cwd는 ~/.minit이다 — 상속된 cwd(패키징 앱은 "/")로 실행되지 않는다', async () => {
+    const { stdout } = await runWithStdin('sh', ['-c', 'pwd'], '')
+    expect(fs.realpathSync(stdout.trim())).toBe(fs.realpathSync(claudeWorkdir()))
   })
 })
