@@ -50,7 +50,7 @@ describe('escapeMrkdwn', () => {
 
 describe('buildPostMessageBody', () => {
   test('channel·제목(굵게)·날짜·참석자·요약을 포함한다', () => {
-    const body = buildPostMessageBody(meeting(), '#회의록')
+    const body = buildPostMessageBody(meeting(), '#회의록', 'full')
     expect(body.channel).toBe('#회의록')
     expect(body.text).toContain('*주간 회의*')
     expect(body.text).toContain('2026-07-22')
@@ -59,12 +59,12 @@ describe('buildPostMessageBody', () => {
   })
 
   test('참석자가 없으면 참석자 없음 문구를 넣는다', () => {
-    const body = buildPostMessageBody(meeting({ participants: [] }), '#회의록')
+    const body = buildPostMessageBody(meeting({ participants: [] }), '#회의록', 'full')
     expect(body.text).toContain('참석자 없음')
   })
 
   test('요약이 없으면 "전사만 저장됨" 문구를 넣는다', () => {
-    const body = buildPostMessageBody(meeting({ summary: '' }), '#회의록')
+    const body = buildPostMessageBody(meeting({ summary: '' }), '#회의록', 'full')
     expect(body.text).toContain('전사만 저장됨')
   })
 
@@ -76,7 +76,8 @@ describe('buildPostMessageBody', () => {
           { text: '리뷰 요청' }
         ])
       }),
-      '#회의록'
+      '#회의록',
+      'full'
     )
     expect(body.text).toContain('액션아이템')
     expect(body.text).toContain('- [ ] 문서 작성 (담당: 철수) (기한: 2026-07-25)')
@@ -84,7 +85,7 @@ describe('buildPostMessageBody', () => {
   })
 
   test('액션아이템이 비어 있으면 액션아이템 섹션을 생략한다', () => {
-    const body = buildPostMessageBody(meeting({ sections: actionsSection([]) }), '#회의록')
+    const body = buildPostMessageBody(meeting({ sections: actionsSection([]) }), '#회의록', 'full')
     expect(body.text).not.toContain('액션아이템')
   })
 
@@ -97,7 +98,8 @@ describe('buildPostMessageBody', () => {
           { heading: '블로커', kind: 'list', items: [] }
         ]
       }),
-      '#회의록'
+      '#회의록',
+      'full'
     )
     expect(body.text).toContain('*주간 회의* · 데일리')
     expect(body.text).toContain('*진척*')
@@ -113,7 +115,8 @@ describe('buildPostMessageBody', () => {
         summary: '<script> & 위험',
         sections: actionsSection([{ text: 'R&D <검토>', assignee: '<팀장>', due: '<2026-08-01>' }])
       }),
-      '#회의록'
+      '#회의록',
+      'full'
     )
     expect(body.text).toContain('*R&amp;D &lt;기획&gt;*')
     expect(body.text).toContain('A&amp;B, &lt;C&gt;')
@@ -122,7 +125,7 @@ describe('buildPostMessageBody', () => {
   })
 
   test('기존처럼 특수문자가 없는 픽스처는 이스케이프 없이 그대로 통과한다', () => {
-    const body = buildPostMessageBody(meeting(), '#회의록')
+    const body = buildPostMessageBody(meeting(), '#회의록', 'full')
     expect(body.text).toContain('*주간 회의*')
     expect(body.text).toContain('철수, 영희')
   })
@@ -267,11 +270,11 @@ describe('sendSlackNotification', () => {
     const post = vi.fn(async () => undefined)
     const log = vi.fn()
 
-    sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    sendSlackNotification(meeting(), token, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(buildBody).toHaveBeenCalledWith(meeting(), channel)
+    expect(buildBody).toHaveBeenCalledWith(meeting(), channel, 'full')
     expect(post).toHaveBeenCalledWith(token, body, fetch)
     expect(log).not.toHaveBeenCalled()
   })
@@ -282,7 +285,7 @@ describe('sendSlackNotification', () => {
     const log = vi.fn()
 
     expect(() =>
-      sendSlackNotification(meeting(), null, channel, { buildBody, post, fetchImpl: fetch, log })
+      sendSlackNotification(meeting(), null, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     ).not.toThrow()
     expect(buildBody).not.toHaveBeenCalled()
     expect(post).not.toHaveBeenCalled()
@@ -295,7 +298,7 @@ describe('sendSlackNotification', () => {
     const log = vi.fn()
 
     expect(() =>
-      sendSlackNotification(meeting(), token, null, { buildBody, post, fetchImpl: fetch, log })
+      sendSlackNotification(meeting(), token, null, 'full', { buildBody, post, fetchImpl: fetch, log })
     ).not.toThrow()
     expect(buildBody).not.toHaveBeenCalled()
     expect(post).not.toHaveBeenCalled()
@@ -308,7 +311,7 @@ describe('sendSlackNotification', () => {
     const log = vi.fn()
 
     expect(() =>
-      sendSlackNotification(meeting({ summary: '' }), token, channel, { buildBody, post, fetchImpl: fetch, log })
+      sendSlackNotification(meeting({ summary: '' }), token, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     ).not.toThrow()
     expect(buildBody).not.toHaveBeenCalled()
     expect(post).not.toHaveBeenCalled()
@@ -320,7 +323,7 @@ describe('sendSlackNotification', () => {
     const post = vi.fn()
     const log = vi.fn()
 
-    sendSlackNotification(meeting({ summary: '   \n  ' }), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    sendSlackNotification(meeting({ summary: '   \n  ' }), token, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     expect(buildBody).not.toHaveBeenCalled()
     expect(post).not.toHaveBeenCalled()
   })
@@ -329,7 +332,8 @@ describe('sendSlackNotification', () => {
   test('payload에 트랜스크립트(segments) 텍스트를 포함하지 않는다', () => {
     const body = buildPostMessageBody(
       meeting({ segments: [{ startMs: 0, text: '이것은 전사 원문입니다' }] }),
-      '#회의록'
+      '#회의록',
+      'full'
     )
     expect(body.text).not.toContain('이것은 전사 원문입니다')
   })
@@ -342,7 +346,7 @@ describe('sendSlackNotification', () => {
     const log = vi.fn()
 
     expect(() =>
-      sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+      sendSlackNotification(meeting(), token, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     ).not.toThrow()
     expect(post).not.toHaveBeenCalled()
     expect(log).toHaveBeenCalledTimes(1)
@@ -358,7 +362,7 @@ describe('sendSlackNotification', () => {
     const log = vi.fn()
 
     expect(() =>
-      sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+      sendSlackNotification(meeting(), token, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     ).not.toThrow()
     await Promise.resolve()
     await Promise.resolve()
@@ -374,7 +378,7 @@ describe('sendSlackNotification', () => {
     })
     const log = vi.fn()
 
-    sendSlackNotification(meeting(), token, channel, { buildBody, post, fetchImpl: fetch, log })
+    sendSlackNotification(meeting(), token, channel, 'full', { buildBody, post, fetchImpl: fetch, log })
     await Promise.resolve()
     await Promise.resolve()
 
@@ -392,7 +396,7 @@ describe('sendSlackNotification', () => {
     })
     const notifyFailure = vi.fn()
 
-    sendSlackNotification(meeting(), token, channel, {
+    sendSlackNotification(meeting(), token, channel, 'full', {
       buildBody, post, fetchImpl: fetch, log: vi.fn(), notifyFailure
     })
     await Promise.resolve()
@@ -408,7 +412,7 @@ describe('sendSlackNotification', () => {
     })
     const notifyFailure = vi.fn()
 
-    sendSlackNotification(meeting(), token, channel, {
+    sendSlackNotification(meeting(), token, channel, 'full', {
       buildBody, post, fetchImpl: fetch, log: vi.fn(), notifyFailure
     })
     await Promise.resolve()
@@ -423,7 +427,7 @@ describe('sendSlackNotification', () => {
     })
     const notifyFailure = vi.fn()
 
-    sendSlackNotification(meeting(), token, channel, {
+    sendSlackNotification(meeting(), token, channel, 'full', {
       buildBody, post: vi.fn(), fetchImpl: fetch, log: vi.fn(), notifyFailure
     })
 
@@ -433,7 +437,7 @@ describe('sendSlackNotification', () => {
   test('발송에 성공하면 notifyFailure를 호출하지 않는다', async () => {
     const notifyFailure = vi.fn()
 
-    sendSlackNotification(meeting(), token, channel, {
+    sendSlackNotification(meeting(), token, channel, 'full', {
       buildBody: vi.fn(() => ({ channel, text: 'ok' })),
       post: vi.fn(async () => undefined),
       fetchImpl: fetch,
@@ -454,7 +458,7 @@ describe('notifySlackForMeeting', () => {
     const loadToken = vi.fn(() => 'xoxb-token')
     const send = vi.fn()
 
-    notifySlackForMeeting(meeting(), null, loadToken, undefined, send)
+    notifySlackForMeeting(meeting(), null, 'full', loadToken, undefined, send)
 
     expect(loadToken).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
@@ -464,7 +468,7 @@ describe('notifySlackForMeeting', () => {
     const loadToken = vi.fn(() => null)
     const send = vi.fn()
 
-    notifySlackForMeeting(meeting(), channel, loadToken, undefined, send)
+    notifySlackForMeeting(meeting(), channel, 'full', loadToken, undefined, send)
 
     expect(loadToken).toHaveBeenCalledTimes(1)
     expect(send).not.toHaveBeenCalled()
@@ -475,18 +479,18 @@ describe('notifySlackForMeeting', () => {
     const send = vi.fn()
     const m = meeting()
 
-    notifySlackForMeeting(m, channel, loadToken, undefined, send)
+    notifySlackForMeeting(m, channel, 'full', loadToken, undefined, send)
 
-    expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel, expect.anything())
+    expect(send).toHaveBeenCalledWith(m, 'xoxb-token', channel, 'full', expect.anything())
   })
 
   test('실패 알림 콜백을 발송 deps로 넘긴다', () => {
     const notifyFailure = vi.fn()
     const send = vi.fn()
 
-    notifySlackForMeeting(meeting(), channel, () => 'xoxb-token', notifyFailure, send)
+    notifySlackForMeeting(meeting(), channel, 'full', () => 'xoxb-token', notifyFailure, send)
 
-    expect(send.mock.calls[0][3].notifyFailure).toBe(notifyFailure)
+    expect(send.mock.calls[0][4].notifyFailure).toBe(notifyFailure)
   })
 })
 
@@ -524,5 +528,54 @@ describe('defaultSlackChannelId', () => {
   test('자동 발송 꺼짐 + override 미지정이면 발송하지 않는다', () => {
     const fallback = defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: false })
     expect(resolveSlackChannelId(undefined, fallback)).toBeNull()
+  })
+})
+
+function weeklySections(): Meeting['sections'] {
+  return [
+    { heading: '결정사항', kind: 'list', items: ['A로 간다', 'B는 보류'] },
+    { heading: '진행 상황', kind: 'list', items: ['C 구현 80%'] },
+    { heading: '다음 주 액션아이템', kind: 'actions', items: [{ text: 'D 배포', assignee: '조엘' }] },
+  ]
+}
+
+describe('발송 범위(scope)', () => {
+  test('summary — 섹션을 하나도 담지 않는다', () => {
+    const text = buildPostMessageBody(meeting({ sections: weeklySections() }), 'C1', 'summary').text
+    expect(text).toContain('이번 주 진행 상황을 공유했다.')
+    expect(text).not.toContain('결정사항')
+    expect(text).not.toContain('*진행 상황*')
+    expect(text).not.toContain('다음 주 액션아이템')
+  })
+
+  test('actions — actions 섹션만 담는다', () => {
+    const text = buildPostMessageBody(meeting({ sections: weeklySections() }), 'C1', 'actions').text
+    expect(text).toContain('이번 주 진행 상황을 공유했다.')
+    expect(text).toContain('다음 주 액션아이템')
+    expect(text).toContain('D 배포')
+    expect(text).not.toContain('A로 간다')
+    expect(text).not.toContain('C 구현 80%')
+  })
+
+  test('full — 모든 섹션을 담는다', () => {
+    const text = buildPostMessageBody(meeting({ sections: weeklySections() }), 'C1', 'full').text
+    expect(text).toContain('A로 간다')
+    expect(text).toContain('C 구현 80%')
+    expect(text).toContain('D 배포')
+  })
+
+  // 아이디어·간이 타입은 actions 섹션이 없다. 이때 actions는 summary와 같아야 한다.
+  test('actions 섹션이 없는 회의는 actions와 summary 결과가 같다', () => {
+    const ideaSections: Meeting['sections'] = [
+      { heading: '아이디어', kind: 'list', items: ['알림 개선'] },
+      { heading: '후보 방향', kind: 'list', items: ['A안'] },
+    ]
+    const m = meeting({ meetingType: 'idea', sections: ideaSections })
+    expect(buildPostMessageBody(m, 'C1', 'actions').text).toBe(buildPostMessageBody(m, 'C1', 'summary').text)
+  })
+
+  test('요약 문단의 빈 줄을 그대로 보낸다', () => {
+    const m = meeting({ summary: '첫째 문단.\n\n둘째 문단.' })
+    expect(buildPostMessageBody(m, 'C1', 'summary').text).toContain('첫째 문단.\n\n둘째 문단.')
   })
 })
