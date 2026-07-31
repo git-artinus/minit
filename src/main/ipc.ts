@@ -154,6 +154,7 @@ export function registerIpc(
     repoRoot: settings.repoRoot, autoPush: settings.autoPush,
     slackChannelId: settings.slackChannelId, slackChannelName: settings.slackChannelName,
     slackPromptShown: settings.slackPromptShown, slackAutoSend: settings.slackAutoSend,
+    slackSendScope: settings.slackSendScope,
     githubRepo: settings.githubRepo, githubPromptShown: settings.githubPromptShown, githubSync: settings.githubSync,
     defaultRepoRoot: configDir,
     repoRootIsGitRepo: isGitRepo(settings.repoRoot),

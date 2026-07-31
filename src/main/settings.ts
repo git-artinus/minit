@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import type { SlackSendScope } from '../shared/types'
 
 export interface Settings {
   repoRoot: string; modelName: string; autoPush: boolean
@@ -10,6 +11,9 @@ export interface Settings {
   // 유지한 채 자동 발송만 끌 수 있다(꺼도 회의 시작 override·공유 버튼으로 수동 발송 가능).
   slackChannelId: string | null; slackChannelName: string | null; slackPromptShown: boolean
   slackAutoSend: boolean
+  // slackSendScope — Slack 본문에 담을 범위. 자동 발송·재생성 후 발송·수동 공유 3경로가
+  // 모두 이 값을 읽는다.
+  slackSendScope: SlackSendScope
   // GitHub 연동(v0.3.0 ③) — 토큰 자체는 여기 저장하지 않는다(github/token-store.ts가 별도
   // 암호화 파일로 관리). pendingUploads는 내부 관리 필드(ipc.ts settings:update patch로는
   // 변경할 수 없다 — 업로드 실패 시 큐에 추가·재시도 성공 시 제거는 sync.ts가 담당). githubSync는
@@ -61,6 +65,12 @@ function normalizeFilenameQueue(value: unknown): string[] {
   return Array.isArray(value) && value.every((f) => typeof f === 'string') ? (value as string[]) : []
 }
 
+const SLACK_SEND_SCOPES: readonly string[] = ['summary', 'actions', 'full']
+
+export function isSlackSendScope(value: unknown): value is SlackSendScope {
+  return typeof value === 'string' && SLACK_SEND_SCOPES.includes(value)
+}
+
 function normalizeSettings(merged: Settings, defaults: Settings): Settings {
   return {
     ...merged,
@@ -77,6 +87,7 @@ function normalizeSettings(merged: Settings, defaults: Settings): Settings {
     githubSync: typeof merged.githubSync === 'boolean' ? merged.githubSync : defaults.githubSync,
     slackPromptShown: typeof merged.slackPromptShown === 'boolean' ? merged.slackPromptShown : defaults.slackPromptShown,
     slackAutoSend: typeof merged.slackAutoSend === 'boolean' ? merged.slackAutoSend : defaults.slackAutoSend,
+    slackSendScope: isSlackSendScope(merged.slackSendScope) ? merged.slackSendScope : defaults.slackSendScope,
     githubPromptShown:
       typeof merged.githubPromptShown === 'boolean' ? merged.githubPromptShown : defaults.githubPromptShown
   }
@@ -87,6 +98,7 @@ export function loadSettings(userDataDir: string, defaultRepoRoot: string): Sett
   const defaults: Settings = {
     repoRoot: defaultRepoRoot, modelName: 'ggml-large-v3-turbo.bin', autoPush: true,
     slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false,
+    slackSendScope: 'actions',
     githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
   }
 
