@@ -9,6 +9,7 @@ import type {
   RegenerateResult,
   SlackChannel,
   SlackSendFailure,
+  SlackSendScope,
   SlackTokenState,
   UpdateCheckResult,
   UpdateProgress
@@ -85,7 +86,7 @@ const minutingApi = {
   updateSettings: (
     patch: {
       repoRoot?: string; autoPush?: boolean
-      slackPromptShown?: boolean; slackAutoSend?: boolean
+      slackPromptShown?: boolean; slackAutoSend?: boolean; slackSendScope?: SlackSendScope
       githubRepo?: string | null; githubPromptShown?: boolean; githubSync?: boolean
     }
   ): Promise<AppSettings> => ipcRenderer.invoke('settings:update', patch),

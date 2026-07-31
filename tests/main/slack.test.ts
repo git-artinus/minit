@@ -535,7 +535,11 @@ function weeklySections(): Meeting['sections'] {
   return [
     { heading: '결정사항', kind: 'list', items: ['A로 간다', 'B는 보류'] },
     { heading: '진행 상황', kind: 'list', items: ['C 구현 80%'] },
-    { heading: '다음 주 액션아이템', kind: 'actions', items: [{ text: 'D 배포', assignee: '조엘' }] },
+    {
+      heading: '다음 주 액션아이템',
+      kind: 'actions',
+      items: [{ text: 'D 배포', assignee: '조엘' }]
+    }
   ]
 }
 
@@ -568,10 +572,12 @@ describe('발송 범위(scope)', () => {
   test('actions 섹션이 없는 회의는 actions와 summary 결과가 같다', () => {
     const ideaSections: Meeting['sections'] = [
       { heading: '아이디어', kind: 'list', items: ['알림 개선'] },
-      { heading: '후보 방향', kind: 'list', items: ['A안'] },
+      { heading: '후보 방향', kind: 'list', items: ['A안'] }
     ]
     const m = meeting({ meetingType: 'idea', sections: ideaSections })
-    expect(buildPostMessageBody(m, 'C1', 'actions').text).toBe(buildPostMessageBody(m, 'C1', 'summary').text)
+    expect(buildPostMessageBody(m, 'C1', 'actions').text).toBe(
+      buildPostMessageBody(m, 'C1', 'summary').text
+    )
   })
 
   test('요약 문단의 빈 줄을 그대로 보낸다', () => {
