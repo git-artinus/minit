@@ -285,3 +285,19 @@ describe('summaryParagraphs', () => {
     expect(summaryParagraphs('   \n\n  ')).toEqual([])
   })
 })
+
+// 회의 타입 레지스트리에서 위클리 heading을 '진행 상황'으로 바꿔도, 파서는 파일에 적힌
+// heading을 그대로 읽는다. 이미 저장된 회의록이 '상태'로 계속 표시돼야 한다.
+test("'상태' heading으로 저장된 구파일이 그대로 읽힌다", () => {
+  const raw = [
+    '---', 'title: 지난 위클리', "date: '2026-07-24T10:32:52+09:00'", 'duration: 51m',
+    'type: weekly', 'participants: []', '---', '',
+    '## 요약', '', '요약문.', '',
+    '## 결정사항', '', '- 결정 A', '',
+    '## 상태', '', '- 상태 A', '',
+    '## 다음 주 액션아이템', '', '- [ ] 할 일 A', '',
+  ].join('\n')
+  const parsed = parseMeeting('2026-07-24-지난-위클리.md', raw)
+  expect(parsed.sections.map((s) => s.heading)).toEqual(['결정사항', '상태', '다음 주 액션아이템'])
+  expect(parsed.meetingType).toBe('weekly')
+})
