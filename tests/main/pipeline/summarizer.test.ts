@@ -7,6 +7,8 @@ import type { ActionItem } from '../../../src/shared/types'
 
 const general = meetingTypeDef('general')
 const daily = meetingTypeDef('daily')
+const weekly = meetingTypeDef('weekly')
+const quick = meetingTypeDef('quick')
 
 const valid = JSON.stringify({
   summary: '스프린트 목표를 정리했다.',
@@ -52,6 +54,15 @@ describe('parseClaudeOutput', () => {
     } catch (e) {
       expect((e as InvalidOutputError).raw).toHaveLength(5000)
     }
+  })
+  // 기준선은 프롬프트 층에서만 쓴다. 파서가 자르면 "중요도 순"이 틀렸을 때 핵심이 조용히 사라진다.
+  test('기준선을 초과한 항목도 자르지 않는다', () => {
+    const many = Array.from({ length: 12 }, (_, i) => `결정 ${i}`)
+    const stdout = JSON.stringify({ summary: 's', sections: { 결정사항: many, '진행 상황': [], '다음 주 액션아이템': [] } })
+    const out = parseClaudeOutput(stdout, meetingTypeDef('weekly'))
+    const decisions = out.sections.find((s) => s.heading === '결정사항')
+    expect(decisions?.kind).toBe('list')
+    expect(decisions && decisions.kind === 'list' ? decisions.items : []).toHaveLength(12)
   })
   test('assignee 없는 액션아이템도 허용한다', () => {
     const out = parseClaudeOutput(JSON.stringify({ summary: 's', sections: { 액션아이템: [{ text: 't' }] } }), general)
@@ -116,6 +127,38 @@ describe('buildPrompt', () => {
   })
   test('참석자가 없으면 교정 지침을 넣지 않는다', () => {
     expect(buildPrompt(daily, '데일리', [])).not.toMatch(/오인식/)
+  })
+  test('타입별 요약 분량 지침과 문단 규약을 담는다', () => {
+    expect(buildPrompt(weekly, '위클리', [])).toContain('1~2문단(문단당 3~4문장)')
+    expect(buildPrompt(weekly, '위클리', [])).toContain('문단은 빈 줄로 구분한다')
+    expect(buildPrompt(quick, '간이', [])).toContain('2~3문장')
+  })
+  test('섹션별 기준선을 개수와 함께 담는다', () => {
+    const p = buildPrompt(weekly, '위클리', [])
+    expect(p).toContain('결정사항 4개')
+    expect(p).toContain('진행 상황 4개')
+    expect(p).toContain('다음 주 액션아이템 5개')
+    expect(p).toContain('안팎')
+  })
+  // 상한 어법은 코드로 자르지 않아도 LLM이 스스로 중요한 항목을 버리게 만든다.
+  // 부정 단언은 실제로 들어올 법한 형태를 잡아야 한다 — '상한을 넘기지 마라' 같은 정확한
+  // 어구만 막으면 '최대 4개'·'4개 이하로'가 그대로 통과해 테스트가 통과만 하는 껍데기가 된다.
+  // '넘기지 마라'로 넓힐 수는 없다: 같은 프롬프트의 '80자를 넘기지 마라'가 걸린다.
+  test('기준선을 상한으로 지시하지 않는다', () => {
+    const p = buildPrompt(weekly, '위클리', [])
+    expect(p).toContain('중요한 내용이 빠지느니 기준선을 넘기는 편이 낫다')
+    expect(p).not.toMatch(/최대 \d+개|\d+개 이하|\d+개를 넘기지 마라|개수를 초과/)
+  })
+  test('병합·중복 배제 규칙을 담는다', () => {
+    const p = buildPrompt(weekly, '위클리', [])
+    expect(p).toContain('하나로 합쳐라')
+    expect(p).toContain('요약에 이미 쓴 내용을 항목으로 반복하지 마라')
+    expect(p).toContain('80자')
+  })
+  test('섹션이 없는 타입에는 항목 규칙을 넣지 않는다', () => {
+    const p = buildPrompt(quick, '간이', [])
+    expect(p).not.toContain('안팎')
+    expect(p).not.toContain('80자')
   })
 })
 
