@@ -227,3 +227,42 @@ describe('isValidMeetingFilename', () => {
     expect(isValidMeetingFilename('..md')).toBe(false)
   })
 })
+
+describe('요약 문단 보존', () => {
+  test('빈 줄로 나눈 요약이 라운드트립에서 유지된다', () => {
+    const twoParagraphs = { ...meeting, summary: '첫째 문단이다.\n\n둘째 문단이다.' }
+    const parsed = parseMeeting('2026-07-20-주간-스탠드업.md', serializeMeeting(twoParagraphs))
+    expect(parsed.summary).toBe('첫째 문단이다.\n\n둘째 문단이다.')
+  })
+
+  test('헤딩 직후·직전의 빈 줄은 내용으로 취급하지 않는다', () => {
+    const parsed = parseMeeting('x.md', serializeMeeting(meeting))
+    expect(parsed.summary).toBe('스프린트 목표를 정리했다.')
+  })
+
+  // 사용자가 손으로 편집한 회의록에는 불릿 사이 빈 줄이 들어올 수 있다.
+  // 빈 줄 하나 때문에 list가 text로 오판되면 렌더·Slack 출력이 통째로 바뀐다.
+  test('빈 줄이 섞인 list 섹션도 list로 파싱한다', () => {
+    const raw = [
+      '---', 'title: 회의', "date: '2026-07-20T10:30:00+09:00'", 'duration: 10m',
+      'type: weekly', 'participants: []', '---', '',
+      '## 요약', '', '요약문.', '',
+      '## 결정사항', '', '- 첫째', '', '- 둘째', '',
+    ].join('\n')
+    const parsed = parseMeeting('x.md', raw)
+    expect(parsed.sections).toEqual([{ heading: '결정사항', kind: 'list', items: ['첫째', '둘째'] }])
+  })
+
+  test('빈 줄이 섞인 actions 섹션도 actions로 파싱한다', () => {
+    const raw = [
+      '---', 'title: 회의', "date: '2026-07-20T10:30:00+09:00'", 'duration: 10m',
+      'type: general', 'participants: []', '---', '',
+      '## 요약', '', '요약문.', '',
+      '## 액션아이템', '', '- [ ] 첫째 (담당: 조엘)', '', '- [ ] 둘째', '',
+    ].join('\n')
+    const parsed = parseMeeting('x.md', raw)
+    expect(parsed.sections).toEqual([
+      { heading: '액션아이템', kind: 'actions', items: [{ text: '첫째', assignee: '조엘' }, { text: '둘째' }] },
+    ])
+  })
+})

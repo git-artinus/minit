@@ -129,20 +129,34 @@ export function parseMeeting(filename: string, raw: string): Meeting {
 }
 
 function inferSection(heading: string, lines: string[]): MeetingSection {
-  if (lines.some((l) => ACTION_RE.test(l))) {
-    const items: ActionItem[] = lines
+  // kind 판정과 항목 추출은 빈 줄을 빼고 한다 — 손으로 편집한 파일의 빈 줄 하나가
+  // every(startsWith('- '))를 깨뜨려 list를 text로 오판시킨다.
+  const content = lines.filter((l) => l.trim() !== '')
+  if (content.some((l) => ACTION_RE.test(l))) {
+    const items: ActionItem[] = content
       .map((l) => ACTION_RE.exec(l))
       .filter((m): m is RegExpExecArray => m !== null)
       .map((m) => ({ text: m[1], ...(m[2] ? { assignee: m[2] } : {}), ...(m[3] ? { due: m[3] } : {}) }))
     return { heading, kind: 'actions', items }
   }
-  if (lines.length > 0 && lines.every((l) => l.startsWith('- '))) {
-    return { heading, kind: 'list', items: lines.map((l) => l.slice(2)) }
+  if (content.length > 0 && content.every((l) => l.startsWith('- '))) {
+    return { heading, kind: 'list', items: content.map((l) => l.slice(2)) }
   }
+  // text kind는 문단 구분(빈 줄)이 내용의 일부다 — 걸러내지 않은 원본을 쓴다.
   return { heading, kind: 'text', text: lines.join('\n') }
 }
 
 // 순서 보존 — 섹션 배열 모델은 파일에 적힌 순서가 곧 표시 순서다.
+// 헤딩 직후·다음 헤딩 직전의 빈 줄은 마크다운 구분자이지 내용이 아니다. 본문 사이 빈 줄만
+// 남긴다 — 요약을 문단으로 나눠 저장해도 다시 읽을 때 문단 경계가 살아 있어야 한다.
+function trimBlankEdges(lines: string[]): string[] {
+  let start = 0
+  let end = lines.length
+  while (start < end && lines[start].trim() === '') start++
+  while (end > start && lines[end - 1].trim() === '') end--
+  return lines.slice(start, end)
+}
+
 function splitSections(content: string): [string, string[]][] {
   const sections: [string, string[]][] = []
   let current: string[] | null = null
@@ -151,9 +165,9 @@ function splitSections(content: string): [string, string[]][] {
     if (h) {
       current = []
       sections.push([h[1].trim(), current])
-    } else if (current && line.trim() !== '') {
+    } else if (current) {
       current.push(line)
     }
   }
-  return sections
+  return sections.map(([heading, lines]): [string, string[]] => [heading, trimBlankEdges(lines)])
 }
