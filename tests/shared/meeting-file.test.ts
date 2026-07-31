@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   defaultMeetingTitle, formatStartTime, formatTimestamp, isValidMeetingFilename, localIsoNow, meetingFilename, parseMeeting,
-  serializeMeeting,
+  serializeMeeting, summaryParagraphs,
 } from '../../src/shared/meeting-file'
 
 const meeting = {
@@ -264,5 +264,24 @@ describe('요약 문단 보존', () => {
     expect(parsed.sections).toEqual([
       { heading: '액션아이템', kind: 'actions', items: [{ text: '첫째', assignee: '조엘' }, { text: '둘째' }] },
     ])
+  })
+})
+
+describe('summaryParagraphs', () => {
+  test('빈 줄 기준으로 문단을 나눈다', () => {
+    expect(summaryParagraphs('첫째다.\n\n둘째다.')).toEqual(['첫째다.', '둘째다.'])
+  })
+  test('빈 줄이 없으면 한 문단이다', () => {
+    expect(summaryParagraphs('한 덩어리다.')).toEqual(['한 덩어리다.'])
+  })
+  test('빈 줄이 여러 개여도 문단이 늘어나지 않는다', () => {
+    expect(summaryParagraphs('첫째다.\n\n\n\n둘째다.')).toEqual(['첫째다.', '둘째다.'])
+  })
+  test('문단 안의 단일 개행은 유지한다', () => {
+    expect(summaryParagraphs('첫 줄\n둘째 줄\n\n다음 문단')).toEqual(['첫 줄\n둘째 줄', '다음 문단'])
+  })
+  test('빈 요약은 빈 배열이다', () => {
+    expect(summaryParagraphs('')).toEqual([])
+    expect(summaryParagraphs('   \n\n  ')).toEqual([])
   })
 })

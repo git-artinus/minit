@@ -45,6 +45,15 @@ export function formatStartTime(iso: string): string {
   return m ? `${m[1]}:${m[2]}` : ''
 }
 
+// 요약의 문단 경계는 빈 줄이다(마크다운 규약). 렌더러가 문단마다 <p>를 만들 때 쓴다 —
+// 단일 <p>에 그대로 넣으면 HTML이 개행을 공백으로 접어 문단 구분이 사라진다.
+export function summaryParagraphs(summary: string): string[] {
+  return summary
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p !== '')
+}
+
 export function formatTimestamp(ms: number): string {
   const total = Math.floor(ms / 1000)
   const h = String(Math.floor(total / 3600)).padStart(2, '0')
