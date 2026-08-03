@@ -31,13 +31,12 @@ function formatDate(iso: string): string {
   return `${y}년 ${Number(m)}월 ${Number(d)}일`
 }
 
-// 본문을 set:html로 주입하므로 Starlight가 헤딩을 스스로 수집하지 못한다 — 버전 목록을
-// 직접 넘긴다. ToC를 끄면 우측 레일이 사라지면서 본문 폭과 상단 검색창 위치까지 문서
-// 페이지와 어긋난다(실측: 검색창 174px, 본문 360px 차이). 목차 자체도 버전 바로가기로 쓸모가 있다.
-const headings = rendered.map((r) => ({ depth: 2, slug: `v${r.version}`, text: r.version }))
+// ToC를 두지 않는다. 문서는 한 페이지 안의 소제목을 훑는 용도라 목차가 맞지만, 변경 이력은
+// 버전 역순 목록이라 좌측 레일이 이미 "지금 어느 버전"을 말해준다 — 우측에 버전 목록을 또
+// 세우면 같은 정보가 두 곳에 놓인다. 문서 페이지와 구조를 똑같이 맞추는 것이 목적이 아니다.
 ---
 
-<StarlightPage frontmatter={{ title: '변경 이력', head: HEAD }} headings={headings}>
+<StarlightPage frontmatter={{ title: '변경 이력', tableOfContents: false, head: HEAD }}>
   <p class="cl-lede">
     각 버전의 상세 내용은 GitHub 릴리즈에서도 볼 수 있다. 이 목록은 릴리즈가 발행될 때마다
     자동으로 갱신된다.
@@ -74,6 +73,13 @@ const headings = rendered.map((r) => ({ depth: 2, slug: `v${r.version}`, text: r
 
   .cl-lede {
     color: var(--sl-color-gray-3);
+  }
+
+  /* Starlight 기본 본문 폭(45rem)은 한 컬럼 글을 기준으로 잡힌 값이라, 여기서 좌측 레일이
+     200px를 가져가면 본문이 29자 남짓으로 눌린다. ToC가 없어 남는 폭을 본문에 돌려 46자
+     안팎으로 맞춘다. is:global이어도 이 페이지 번들에만 실린다 — 문서 폭은 그대로다. */
+  :root {
+    --sl-content-width: 62rem;
   }
 
   .cl {
