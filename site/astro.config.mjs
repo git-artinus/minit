@@ -10,9 +10,11 @@ export default defineConfig({
       description: '대면 회의를 위한 회의록 앱',
       customCss: ['./src/styles/custom.css'],
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/git-artinus/minit' }],
+      // 최상위 link는 그룹 라벨과 같은 들여쓰기로 그려진다 — 활성 표시(주황 바)가 문서
+      // 항목과 다른 단에 걸려 페이지를 옮길 때마다 좌우로 튄다. 그룹으로 감싸 단을 맞춘다.
       sidebar: [
         { label: '문서', items: [{ autogenerate: { directory: 'docs' } }] },
-        { label: '변경 이력', link: '/changelog/' }
+        { label: '릴리즈', items: [{ label: '변경 이력', link: '/changelog/' }] }
       ]
     })
   ],
