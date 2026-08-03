@@ -5,7 +5,7 @@
 
 각 릴리즈의 사용자 관점 안내와 설치 파일은 [GitHub Releases](https://github.com/git-artinus/minit/releases)에 있다.
 
-## [0.13.0] - 2026-07-31
+## [0.13.0] - 2026-08-03
 
 ### Added
 
