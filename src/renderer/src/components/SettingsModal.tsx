@@ -11,7 +11,7 @@ import type {
 } from '../../../shared/types'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 import { claudeStatusView } from '../state/claude-status-view'
-import { releaseNotesUrl } from '../../../shared/release'
+import { changelogUrl, releasesPageUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
 import { GithubConnectFlow } from './GithubConnectFlow'
@@ -716,10 +716,10 @@ export function SettingsModal(props: {
                   type="button"
                   className="link-btn"
                   onClick={() =>
-                    window.minuting.openExternal(releaseNotesUrl(updateResult.version)).catch(() => {})
+                    window.minuting.openExternal(changelogUrl(updateResult.version)).catch(() => {})
                   }
                 >
-                  릴리즈 노트
+                  변경 이력
                 </button>
                 <button type="button" className="btn-primary" onClick={startUpdateDownload}>
                   업데이트
@@ -757,7 +757,7 @@ export function SettingsModal(props: {
               <button
                 type="button"
                 className="link-btn"
-                onClick={() => window.minuting.openExternal(releaseNotesUrl()).catch(() => {})}
+                onClick={() => window.minuting.openExternal(releasesPageUrl()).catch(() => {})}
               >
                 릴리즈 페이지에서 직접 받기
               </button>
