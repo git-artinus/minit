@@ -5,6 +5,19 @@
 
 각 릴리즈의 사용자 관점 안내와 설치 파일은 [GitHub Releases](https://github.com/git-artinus/minit/releases)에 있다.
 
+## [0.13.1] - 2026-08-03
+
+### Changed
+
+- **업데이트 알림의 링크가 Minit 변경 이력 화면으로 연결된다** — 새 버전 알림에서 누르면
+  GitHub 대신 [변경 이력](https://git-artinus.github.io/minit/changelog/)의 해당 버전으로 바로
+  이동한다. 버튼 이름도 `릴리즈 노트`에서 `변경 이력`으로 바뀌었다.
+  - 자동 업데이트 확인이 반복 실패했을 때 뜨는 `릴리즈 페이지에서 직접 받기`는 그대로
+    GitHub 릴리즈로 연결된다. 설치 파일을 바로 받는 것이 목적이라 사이트 상태와 무관해야 한다.
+- **변경 이력 화면을 다시 정리했다** — 버전·배포일·내려받기 링크를 왼쪽에 모으고 내용을
+  오른쪽에 뒀다. 버전 사이에 구분선이 생겼고, 오른쪽 목차에서 원하는 버전으로 바로 갈 수 있다.
+  문서 페이지와 본문 폭·검색창 위치가 어긋나던 것도 맞췄다.
+
 ## [0.13.0] - 2026-08-03
 
 ### Added
@@ -51,4 +64,5 @@ CHANGELOG는 0.13.0부터 관리한다. 이전 버전의 변경 내용은 각 �
 | [0.5.0](https://github.com/git-artinus/minit/releases/tag/v0.5.0) | 2026-07-24 |
 | [0.4.4](https://github.com/git-artinus/minit/releases/tag/v0.4.4) | 2026-07-23 |
 
+[0.13.1]: https://github.com/git-artinus/minit/releases/tag/v0.13.1
 [0.13.0]: https://github.com/git-artinus/minit/releases/tag/v0.13.0
