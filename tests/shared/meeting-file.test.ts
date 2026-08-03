@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   defaultMeetingTitle, formatStartTime, formatTimestamp, isValidMeetingFilename, localIsoNow, meetingFilename, parseMeeting,
-  serializeMeeting,
+  serializeMeeting, summaryParagraphs,
 } from '../../src/shared/meeting-file'
 
 const meeting = {
@@ -226,4 +226,78 @@ describe('isValidMeetingFilename', () => {
   test('상위 이동(..)이 포함되면 false', () => {
     expect(isValidMeetingFilename('..md')).toBe(false)
   })
+})
+
+describe('요약 문단 보존', () => {
+  test('빈 줄로 나눈 요약이 라운드트립에서 유지된다', () => {
+    const twoParagraphs = { ...meeting, summary: '첫째 문단이다.\n\n둘째 문단이다.' }
+    const parsed = parseMeeting('2026-07-20-주간-스탠드업.md', serializeMeeting(twoParagraphs))
+    expect(parsed.summary).toBe('첫째 문단이다.\n\n둘째 문단이다.')
+  })
+
+  test('헤딩 직후·직전의 빈 줄은 내용으로 취급하지 않는다', () => {
+    const parsed = parseMeeting('x.md', serializeMeeting(meeting))
+    expect(parsed.summary).toBe('스프린트 목표를 정리했다.')
+  })
+
+  // 사용자가 손으로 편집한 회의록에는 불릿 사이 빈 줄이 들어올 수 있다.
+  // 빈 줄 하나 때문에 list가 text로 오판되면 렌더·Slack 출력이 통째로 바뀐다.
+  test('빈 줄이 섞인 list 섹션도 list로 파싱한다', () => {
+    const raw = [
+      '---', 'title: 회의', "date: '2026-07-20T10:30:00+09:00'", 'duration: 10m',
+      'type: weekly', 'participants: []', '---', '',
+      '## 요약', '', '요약문.', '',
+      '## 결정사항', '', '- 첫째', '', '- 둘째', '',
+    ].join('\n')
+    const parsed = parseMeeting('x.md', raw)
+    expect(parsed.sections).toEqual([{ heading: '결정사항', kind: 'list', items: ['첫째', '둘째'] }])
+  })
+
+  test('빈 줄이 섞인 actions 섹션도 actions로 파싱한다', () => {
+    const raw = [
+      '---', 'title: 회의', "date: '2026-07-20T10:30:00+09:00'", 'duration: 10m',
+      'type: general', 'participants: []', '---', '',
+      '## 요약', '', '요약문.', '',
+      '## 액션아이템', '', '- [ ] 첫째 (담당: 조엘)', '', '- [ ] 둘째', '',
+    ].join('\n')
+    const parsed = parseMeeting('x.md', raw)
+    expect(parsed.sections).toEqual([
+      { heading: '액션아이템', kind: 'actions', items: [{ text: '첫째', assignee: '조엘' }, { text: '둘째' }] },
+    ])
+  })
+})
+
+describe('summaryParagraphs', () => {
+  test('빈 줄 기준으로 문단을 나눈다', () => {
+    expect(summaryParagraphs('첫째다.\n\n둘째다.')).toEqual(['첫째다.', '둘째다.'])
+  })
+  test('빈 줄이 없으면 한 문단이다', () => {
+    expect(summaryParagraphs('한 덩어리다.')).toEqual(['한 덩어리다.'])
+  })
+  test('빈 줄이 여러 개여도 문단이 늘어나지 않는다', () => {
+    expect(summaryParagraphs('첫째다.\n\n\n\n둘째다.')).toEqual(['첫째다.', '둘째다.'])
+  })
+  test('문단 안의 단일 개행은 유지한다', () => {
+    expect(summaryParagraphs('첫 줄\n둘째 줄\n\n다음 문단')).toEqual(['첫 줄\n둘째 줄', '다음 문단'])
+  })
+  test('빈 요약은 빈 배열이다', () => {
+    expect(summaryParagraphs('')).toEqual([])
+    expect(summaryParagraphs('   \n\n  ')).toEqual([])
+  })
+})
+
+// 회의 타입 레지스트리에서 위클리 heading을 '진행 상황'으로 바꿔도, 파서는 파일에 적힌
+// heading을 그대로 읽는다. 이미 저장된 회의록이 '상태'로 계속 표시돼야 한다.
+test("'상태' heading으로 저장된 구파일이 그대로 읽힌다", () => {
+  const raw = [
+    '---', 'title: 지난 위클리', "date: '2026-07-24T10:32:52+09:00'", 'duration: 51m',
+    'type: weekly', 'participants: []', '---', '',
+    '## 요약', '', '요약문.', '',
+    '## 결정사항', '', '- 결정 A', '',
+    '## 상태', '', '- 상태 A', '',
+    '## 다음 주 액션아이템', '', '- [ ] 할 일 A', '',
+  ].join('\n')
+  const parsed = parseMeeting('2026-07-24-지난-위클리.md', raw)
+  expect(parsed.sections.map((s) => s.heading)).toEqual(['결정사항', '상태', '다음 주 액션아이템'])
+  expect(parsed.meetingType).toBe('weekly')
 })

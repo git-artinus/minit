@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
 import { meetingTypeDef } from '../shared/meeting-types'
-import type { ActionItem, Meeting, MeetingSection, SlackSendFailure } from '../shared/types'
+import type { ActionItem, Meeting, MeetingSection, SlackSendFailure, SlackSendScope } from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
   const d = new Date(dateIso)
@@ -29,7 +29,15 @@ function sectionLines(s: MeetingSection): string[] {
   return s.text.trim() !== '' ? [`*${escapeMrkdwn(s.heading)}*`, escapeMrkdwn(s.text)] : []
 }
 
-function buildMeetingText(meeting: Meeting): string {
+// 회의 타입으로 분기하지 않는다 — kind 하나로 결정하므로 타입이 늘어도 여기는 그대로다.
+// 각 타입은 actions 섹션을 0개 또는 1개만 가져 결과가 모호하지 않다.
+function scopedSections(sections: MeetingSection[], scope: SlackSendScope): MeetingSection[] {
+  if (scope === 'summary') return []
+  if (scope === 'actions') return sections.filter((s) => s.kind === 'actions')
+  return sections
+}
+
+function buildMeetingText(meeting: Meeting, scope: SlackSendScope): string {
   const participants =
     meeting.participants.length > 0 ? meeting.participants.map(escapeMrkdwn).join(', ') : '참석자 없음'
   const typeLabel = meetingTypeDef(meeting.meetingType).label
@@ -40,7 +48,7 @@ function buildMeetingText(meeting: Meeting): string {
     meeting.summary.trim() !== '' ? escapeMrkdwn(meeting.summary) : '전사만 저장됨'
   ]
 
-  for (const s of meeting.sections) {
+  for (const s of scopedSections(meeting.sections, scope)) {
     const rendered = sectionLines(s)
     if (rendered.length > 0) lines.push('', ...rendered)
   }
@@ -49,8 +57,12 @@ function buildMeetingText(meeting: Meeting): string {
 }
 
 // chat.postMessage 요청 body를 만드는 순수 함수. 부수효과(네트워크)는 postChatMessage가 담당한다.
-export function buildPostMessageBody(meeting: Meeting, channel: string): { channel: string; text: string } {
-  return { channel, text: buildMeetingText(meeting) }
+export function buildPostMessageBody(
+  meeting: Meeting,
+  channel: string,
+  scope: SlackSendScope
+): { channel: string; text: string } {
+  return { channel, text: buildMeetingText(meeting, scope) }
 }
 
 // Slack Web API(chat.postMessage)에 POST한다. fetch를 주입받아 순수 로직과 분리된 TDD를 허용한다.
@@ -165,6 +177,7 @@ export function sendSlackNotification(
   meeting: Meeting,
   token: string | null,
   channel: string | null,
+  scope: SlackSendScope,
   deps: SendSlackNotificationDeps = defaultDeps
 ): void {
   if (!token || !channel) return
@@ -178,7 +191,7 @@ export function sendSlackNotification(
   }
 
   try {
-    const body = deps.buildBody(meeting, channel)
+    const body = deps.buildBody(meeting, channel, scope)
     void deps.post(token, body, deps.fetchImpl).catch((e) => {
       const message = withInviteHint(e instanceof Error ? e.message : String(e))
       deps.log('[slack] 회의 요약 발송 실패:', message)
@@ -197,13 +210,14 @@ export function sendSlackNotification(
 export function notifySlackForMeeting(
   meeting: Meeting,
   channelId: string | null | undefined,
+  scope: SlackSendScope,
   loadToken: () => string | null,
   notifyFailure?: (failure: SlackSendFailure) => void,
   send: typeof sendSlackNotification = sendSlackNotification
 ): void {
   if (!channelId) return
   const token = loadToken()
-  if (token) send(meeting, token, channelId, { ...defaultDeps, notifyFailure })
+  if (token) send(meeting, token, channelId, scope, { ...defaultDeps, notifyFailure })
 }
 
 // 설정이 정하는 유효 기본 발송 채널 — 자동 발송(slackAutoSend)이 꺼져 있으면 기본 알림

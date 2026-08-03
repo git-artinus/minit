@@ -14,7 +14,7 @@ import {
 } from './updater'
 import * as sink from './recording-sink'
 import { archiveRecording } from './audio-archive'
-import { minitHome, saveSettings } from './settings'
+import { isSlackSendScope, minitHome, saveSettings } from './settings'
 import { initializeSettings } from './settings-init'
 import { runPipeline } from './pipeline/pipeline'
 import { transcribeAndRepair } from './pipeline/transcriber'
@@ -67,6 +67,7 @@ import type {
   Roster,
   SlackChannel,
   SlackSendFailure,
+  SlackSendScope,
   SlackTokenState,
   UpdateCheckResult
 } from '../shared/types'
@@ -154,6 +155,7 @@ export function registerIpc(
     repoRoot: settings.repoRoot, autoPush: settings.autoPush,
     slackChannelId: settings.slackChannelId, slackChannelName: settings.slackChannelName,
     slackPromptShown: settings.slackPromptShown, slackAutoSend: settings.slackAutoSend,
+    slackSendScope: settings.slackSendScope,
     githubRepo: settings.githubRepo, githubPromptShown: settings.githubPromptShown, githubSync: settings.githubSync,
     defaultRepoRoot: configDir,
     repoRootIsGitRepo: isGitRepo(settings.repoRoot),
@@ -384,6 +386,7 @@ export function registerIpc(
         notifySlackForMeeting(
           meeting,
           resolveSlackChannelId(meta.slackChannelId, defaultSlackChannelId(settings)),
+          settings.slackSendScope,
           () => loadSlackToken(configDir, { fs, safeStorage }),
           sendSlackFailureNotice
         )
@@ -558,6 +561,7 @@ export function registerIpc(
     notifySlackForMeeting(
       result.meeting,
       defaultSlackChannelId(settings),
+      settings.slackSendScope,
       () => loadSlackToken(configDir, { fs, safeStorage }),
       sendSlackFailureNotice
     )
@@ -568,7 +572,7 @@ export function registerIpc(
 
   ipcMain.handle('settings:update', (_e, patch: {
     repoRoot?: string; autoPush?: boolean
-    slackPromptShown?: boolean; slackAutoSend?: boolean
+    slackPromptShown?: boolean; slackAutoSend?: boolean; slackSendScope?: SlackSendScope
     githubRepo?: string | null; githubPromptShown?: boolean; githubSync?: boolean
   }): AppSettings => {
     if (patch.repoRoot !== undefined) {
@@ -585,6 +589,10 @@ export function registerIpc(
     }
     if ('slackAutoSend' in patch && typeof patch.slackAutoSend !== 'boolean') {
       throw new Error('invalid slackAutoSend')
+    }
+    // renderer는 신뢰 경계 밖이다 — 타입 선언과 무관하게 세 값만 통과시킨다.
+    if ('slackSendScope' in patch && !isSlackSendScope(patch.slackSendScope)) {
+      throw new Error('invalid slackSendScope')
     }
     if ('githubRepo' in patch) {
       const v = patch.githubRepo
@@ -864,6 +872,10 @@ export function registerIpc(
     const token = loadSlackToken(configDir, { fs, safeStorage })
     if (!token) throw new Error('Slack 봇 토큰이 등록되어 있지 않습니다')
     const meeting = parseMeeting(filename, readMeetingFile(filename))
-    await postChatMessage(token, buildPostMessageBody(meeting, channelId), fetch)
+    await postChatMessage(
+      token,
+      buildPostMessageBody(meeting, channelId, settings.slackSendScope),
+      fetch
+    )
   })
 }
