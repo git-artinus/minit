@@ -10,22 +10,38 @@ import { toReleaseEntries } from './src/lib/releases.ts'
 // 사이드바는 내비게이션 크롬이지 내용이 아니다. 릴리즈 조회가 실패하면 빌드를 세우는
 // 대신 링크 하나로 접는다 — 토큰 없는 로컬(60/h)에서 dev 서버가 통째로 막히지 않게 한다.
 // 페이지 본문은 여전히 실패를 그대로 드러낸다(src/lib/github.ts 참고).
+// 사이드바에 그대로 펼쳐 둘 최근 버전 수. 릴리즈가 쌓여도 목록이 화면을 넘기지 않게
+// 자르고, 나머지는 접힌 하위 그룹으로 내린다.
+const SIDEBAR_RECENT = 10
+
 async function releaseSidebar() {
   try {
     const versions = toReleaseEntries(await fetchAllReleases())
     if (versions.length === 0) throw new Error('릴리즈 없음')
-    return {
-      label: '변경 이력',
-      // 다른 페이지에서는 접어 둔다. Starlight는 현재 페이지를 담은 그룹을 자동으로 펴는데,
-      // 해시가 붙은 링크는 현재 페이지로 쳐주지 않는다 — 최신 버전만 해시 없이 두면
-      // 변경 이력에 들어왔을 때 그룹이 펴지고 그 항목이 활성으로 표시된다. 최신 버전은
-      // 어차피 페이지 맨 위라 앵커가 없어도 같은 곳이다.
-      collapsed: true,
-      items: versions.map((r, i) => ({
-        label: r.version,
-        link: i === 0 ? '/changelog/' : `/changelog/#v${r.version}`
-      }))
+
+    // 최신 버전만 해시 없는 링크로 둔다. Starlight는 현재 페이지를 담은 그룹을 자동으로
+    // 펴는데 해시가 붙은 링크는 현재 페이지로 쳐주지 않는다 — 이렇게 두면 변경 이력에
+    // 들어왔을 때 그룹이 펴지고 그 항목이 활성으로 표시된다. 최신 버전은 어차피 페이지
+    // 맨 위라 앵커가 없어도 같은 곳이다.
+    const toItem = (r, i) => ({
+      label: r.version,
+      link: i === 0 ? '/changelog/' : `/changelog/#v${r.version}`
+    })
+
+    const items = versions.slice(0, SIDEBAR_RECENT).map(toItem)
+    const older = versions.slice(SIDEBAR_RECENT)
+    if (older.length > 0) {
+      // 중첩 그룹은 Starlight 기본 접기 UI를 그대로 쓴다 — 토글용 스크립트가 필요 없다.
+      // 라벨을 '전체 보기'로 하지 않는 이유: 위의 최근 목록은 여기 들어 있지 않다.
+      items.push({
+        label: '이전 버전',
+        collapsed: true,
+        items: older.map((r) => ({ label: r.version, link: `/changelog/#v${r.version}` }))
+      })
     }
+
+    // 다른 페이지에서는 접어 둔다(변경 이력에 들어오면 위 규칙으로 자동으로 펴진다).
+    return { label: '변경 이력', collapsed: true, items }
   } catch {
     return { label: '릴리즈', items: [{ label: '변경 이력', link: '/changelog/' }] }
   }
