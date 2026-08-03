@@ -8,31 +8,223 @@ const entries = toReleaseEntries(await fetchAllReleases())
 // 본문은 메인테이너가 작성한 릴리즈 노트다(.github/RELEASE_TEMPLATE.md 서식).
 // renderReleaseBody가 marked 변환 후 sanitize까지 처리한다 — src/lib/markdown.ts 참고.
 const rendered = entries.map((e) => ({ ...e, html: renderReleaseBody(e.bodyMarkdown) }))
+
+// 랜딩(index.astro)만 IBM Plex를 불러온다. 버전 표기를 앱·랜딩과 같은 모노로 맞추려면
+// 이 페이지에도 필요한데, custom.css에 넣으면 문서 전체 폰트가 바뀐다 — 여기서만 싣는다.
+const HEAD = [
+  { tag: 'link' as const, attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
+  {
+    tag: 'link' as const,
+    attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true }
+  },
+  {
+    tag: 'link' as const,
+    attrs: {
+      rel: 'stylesheet',
+      href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap'
+    }
+  }
+]
+
+function formatDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${y}년 ${Number(m)}월 ${Number(d)}일`
+}
+
+// 본문을 set:html로 주입하므로 Starlight가 헤딩을 스스로 수집하지 못한다 — 버전 목록을
+// 직접 넘긴다. ToC를 끄면 우측 레일이 사라지면서 본문 폭과 상단 검색창 위치까지 문서
+// 페이지와 어긋난다(실측: 검색창 174px, 본문 360px 차이). 목차 자체도 버전 바로가기로 쓸모가 있다.
+const headings = rendered.map((r) => ({ depth: 2, slug: `v${r.version}`, text: r.version }))
 ---
 
-<StarlightPage frontmatter={{ title: '변경 이력', tableOfContents: false }}>
-  <p>
+<StarlightPage frontmatter={{ title: '변경 이력', head: HEAD }} headings={headings}>
+  <p class="cl-lede">
     각 버전의 상세 내용은 GitHub 릴리즈에서도 볼 수 있다. 이 목록은 릴리즈가 발행될 때마다
     자동으로 갱신된다.
   </p>
 
-  {
-    rendered.map((r) => (
-      <section>
-        <h2 id={`v${r.version}`}>v{r.version}</h2>
-        <p>
-          <time datetime={r.publishedAt}>{r.publishedAt}</time>
-          {' · '}
-          <a href={r.htmlUrl}>GitHub 릴리즈</a>
-          {r.dmgUrl && (
-            <>
-              {' · '}
-              <a href={r.dmgUrl}>DMG 내려받기</a>
-            </>
-          )}
-        </p>
-        <Fragment set:html={r.html} />
-      </section>
-    ))
-  }
+  <div class="cl">
+    {
+      rendered.map((r, i) => (
+        <article class="cl-rel">
+          <div class="cl-rail">
+            <h2 class="cl-ver" id={`v${r.version}`}>
+              {r.version}
+              {i === 0 && <span class="cl-badge">최신</span>}
+            </h2>
+            <time class="cl-date" datetime={r.publishedAt}>
+              {formatDate(r.publishedAt)}
+            </time>
+            <nav class="cl-links">
+              <a href={r.htmlUrl}>GitHub 릴리즈</a>
+              {r.dmgUrl && <a href={r.dmgUrl}>DMG 내려받기</a>}
+            </nav>
+          </div>
+          <div class="cl-body" set:html={r.html} />
+        </article>
+      ))
+    }
+  </div>
 </StarlightPage>
+
+<style is:global>
+  /* set:html로 주입한 릴리즈 본문에는 Astro의 스코프 속성이 붙지 않는다 — is:global로 두고
+     .cl 하위로만 한정한다. Starlight의 .sl-markdown-content 규칙과 특정도가 겹치는 선택자는
+     그 클래스를 접두로 붙여 이긴다(붙이지 않으면 h2·목록 크기를 되돌리지 못한다). */
+
+  .cl-lede {
+    color: var(--sl-color-gray-3);
+  }
+
+  .cl {
+    --cl-rail: 200px;
+  }
+
+  .cl-rel {
+    display: grid;
+    grid-template-columns: var(--cl-rail) minmax(0, 1fr);
+    gap: clamp(20px, 4vw, 56px);
+    padding-block: var(--sp-7);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .cl-rel:first-child {
+    border-top: 0;
+    padding-top: var(--sp-5);
+  }
+
+  /* 릴리즈 노트가 길어도 어느 버전을 읽는 중인지 잃지 않게 좌측 레일을 붙잡아 둔다. */
+  .cl-rail {
+    position: sticky;
+    top: calc(var(--sl-nav-height) + var(--sp-5));
+    align-self: start;
+  }
+
+  .sl-markdown-content .cl h2.cl-ver {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.1rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+    /* 앵커(#v0.13.0)로 들어왔을 때 상단 고정 헤더에 가리지 않게 한다. */
+    scroll-margin-top: calc(var(--sl-nav-height) + var(--sp-5));
+  }
+
+  .cl-badge {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    padding: 5px var(--sp-3);
+    border-radius: var(--radius-pill);
+    background: var(--color-primary-soft);
+    color: var(--color-primary-strong);
+    white-space: nowrap;
+  }
+
+  /* 버전과 달리 tabular-nums를 쓰지 않는다 — '2026년 8월 3일'처럼 한 자리 수가 섞이면
+     고정폭 숫자가 조사 사이를 벌려 띄엄띄엄 읽힌다. */
+  .cl-date {
+    display: block;
+    margin-top: var(--sp-3);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: var(--fs-sm);
+    color: var(--color-text-faint);
+  }
+
+  .cl-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
+  }
+
+  .sl-markdown-content .cl-links a {
+    font-size: var(--fs-base);
+    color: var(--color-primary-strong);
+    text-decoration: none;
+  }
+
+  .sl-markdown-content .cl-links a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* 릴리즈 노트의 '✨ 새 기능' 같은 h2는 문서 제목이 아니라 한 릴리즈 안의 구분 라벨이다.
+     Starlight 기본 h2 크기로는 버전 번호보다 커져 위계가 뒤집힌다. */
+  .sl-markdown-content .cl-body :is(h1, h2, h3, h4) {
+    margin-top: var(--sp-6);
+    margin-bottom: var(--sp-3);
+    border: 0;
+    padding: 0;
+    font-size: var(--fs-md);
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+    /* 템플릿 헤딩은 '✨ 새 기능'처럼 이모지로 시작한다. 기본 공백은 이모지 글리프 폭에
+       묻혀 라벨이 이모지에 들러붙어 보인다. */
+    word-spacing: 0.2em;
+    color: var(--color-primary-strong);
+  }
+
+  .sl-markdown-content .cl-body > :first-child {
+    margin-top: 0;
+  }
+
+  /* 리드 문단(템플릿의 '한 줄 소개')만 살짝 키워 릴리즈의 요지가 먼저 읽히게 한다. */
+  .sl-markdown-content .cl-body > p:first-child {
+    font-size: var(--fs-lg);
+    line-height: 1.6;
+    color: var(--color-text);
+  }
+
+  .sl-markdown-content .cl-body ul {
+    padding-left: 1.1em;
+  }
+
+  .sl-markdown-content .cl-body li + li {
+    margin-top: var(--sp-2);
+  }
+
+  .sl-markdown-content .cl-body li::marker {
+    color: var(--color-text-faint);
+  }
+
+  @media (max-width: 800px) {
+    .cl-rel {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--sp-4);
+      padding-block: var(--sp-6);
+    }
+
+    /* 한 줄로 접히면 붙잡아 둘 이유가 없다 — 본문 위를 덮기만 한다. */
+    .cl-rail {
+      position: static;
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--sp-3) var(--sp-4);
+    }
+
+    .cl-date,
+    .cl-links {
+      margin-top: 0;
+    }
+
+    .cl-links {
+      flex-direction: row;
+      gap: var(--sp-4);
+    }
+  }
+</style>
