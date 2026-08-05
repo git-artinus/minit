@@ -149,3 +149,11 @@ export interface AutoCheckStatus {
   consecutiveFailures: number
   lastError: 'feed_unreachable' | 'other' | null
 }
+
+// Slack 멤버 동기화 — users.list에서 가져온 워크스페이스 멤버. 회의 시작 화면의 Slack 참석자
+// 후보이자, 발송 시 담당자를 멘션(<@id>)으로 치환하는 근거다. name은 표시용 폴백 체인
+// (display_name → profile.real_name → real_name → name)의 결과다.
+export interface SlackMember { id: string; name: string }
+export interface SlackMembers { members: SlackMember[]; syncedAt: string }
+// 렌더러 노출용 — 동기화 실패 사유를 함께 준다(users:read 미보유 안내 등).
+export interface SlackMembersState { members: SlackMember[]; syncedAt: string; error: string | null }
