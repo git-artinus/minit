@@ -151,9 +151,32 @@ export interface AutoCheckStatus {
 }
 
 // Slack 멤버 동기화 — users.list에서 가져온 워크스페이스 멤버. 회의 시작 화면의 Slack 참석자
-// 후보이자, 발송 시 담당자를 멘션(<@id>)으로 치환하는 근거다. name은 표시용 폴백 체인
-// (display_name → profile.real_name → real_name → name)의 결과다.
+// 후보이자, 발송 시 담당자를 멘션(<@id>)으로 치환하는 근거다.
+//
+// name은 표시용 폴백 체인(display_name → profile.real_name → real_name → name)의 결과이며,
+// 동시에 이 기능 전체의 **식별 키**다 — 참석자 선택·회의록 저장·담당자 매칭이 모두 name으로
+// 이뤄지고 id는 멘션 치환에만 쓰인다. 따라서 목록 안에서 name이 유일해야 하며, 중복이면
+// 누구인지 확정할 수 없으므로 findMentionId가 멘션을 포기한다.
 export interface SlackMember { id: string; name: string }
-export interface SlackMembers { members: SlackMember[]; syncedAt: string }
-// 렌더러 노출용 — 동기화 실패 사유를 함께 준다(users:read 미보유 안내 등).
-export interface SlackMembersState { members: SlackMember[]; syncedAt: string; error: string | null }
+
+// 동기화 실패 사유. 렌더러가 에러 문자열을 정규식·includes로 되짚지 않도록 main에서 분류한다
+// (SummaryFailureReason과 동일한 관례 — 문자열 매칭은 API 문구 변경에 취약해 이 레포가 폐기했다).
+export type SlackSyncErrorReason =
+  | 'no_token'       // 봇 토큰 미등록
+  | 'missing_scope'  // users:read 미보유 — 재설치 안내 대상
+  | 'auth'           // invalid_auth·account_inactive 등 토큰 자체 문제
+  | 'network'        // 오프라인·타임아웃·HTTP 오류
+  | 'unknown'        // 그 외 — detail 원문을 그대로 보여준다
+export interface SlackSyncError { reason: SlackSyncErrorReason; detail: string }
+
+// 파일(~/.minit/slack-members.json)에 저장되는 형태. syncedAt이 null이면 아직 한 번도 성공하지
+// 않은 것이다(빈 문자열 센티널 대신 null — 레포 전반의 "없음" 표현 관례를 따른다).
+// lastError를 함께 저장하는 이유: 기동 시 백그라운드 동기화가 실패해도 그 사유가 남아야
+// 사용자가 설정 화면을 열었을 때 원인(예: users:read 누락)을 볼 수 있다.
+export interface SlackMembers {
+  members: SlackMember[]
+  syncedAt: string | null
+  lastError: SlackSyncError | null
+}
+// 렌더러 노출용 — 저장된 형태 그대로다. 별도 타입을 두지 않고 확장으로 관계를 명시한다.
+export type SlackMembersState = SlackMembers

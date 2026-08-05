@@ -11,6 +11,7 @@ import type {
 } from '../../../shared/types'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 import { claudeStatusView } from '../state/claude-status-view'
+import { slackSyncErrorText } from '../state/slack-sync-error'
 import { releaseNotesUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
@@ -148,8 +149,9 @@ export function SettingsModal(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slackToken.saved가 true로 바뀔 때만 반응한다.
   }, [props.open, slackToken?.saved])
 
-  // 저장된 멤버 목록만 읽는다(동기화는 하지 않는다 — 기동 시 배경 동기화가 이미 돌았다).
-  // 해제 시 초기화는 clearSlackToken이 맡는다(여기서 동기 setState를 하면 연쇄 렌더가 된다).
+  // 저장된 멤버 목록만 읽는다(동기화는 하지 않는다). 실패 사유는 파일에 함께 저장돼 있으므로
+  // 기동 시 배경 동기화가 실패했어도 여기서 그 사유를 받아 안내를 띄울 수 있다.
+  // 해제 시 초기화는 이 파일의 clearSlackToken이 맡는다.
   useEffect(() => {
     if (!props.open || !slackToken?.saved) return
     window.minuting.getSlackMembers().then(setSlackMembers).catch(() => {})
@@ -636,15 +638,8 @@ export function SettingsModal(props: {
                     : ''}
                 </span>
               </div>
-              {slackMembers?.error?.includes('missing_scope') ? (
-                <p className="setting-error">
-                  Slack 앱에 users:read 권한을 추가한 뒤 워크스페이스에 재설치하세요. 봇 토큰 값은
-                  바뀌지 않으므로 여기 토큰을 다시 입력할 필요는 없습니다.
-                </p>
-              ) : (
-                slackMembers?.error && (
-                  <p className="setting-error">참석자 동기화 실패: {slackMembers.error}</p>
-                )
+              {slackMembers?.lastError && (
+                <p className="setting-error">{slackSyncErrorText(slackMembers.lastError)}</p>
               )}
             </>
           )}

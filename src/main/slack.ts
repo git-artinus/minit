@@ -59,12 +59,16 @@ function buildMeetingText(meeting: Meeting, members: SlackMember[]): string {
 
 // chat.postMessage 요청 body를 만드는 순수 함수. 부수효과(네트워크)는 postChatMessage가 담당한다.
 // members는 담당자 멘션 치환용이며, 비우면 기존처럼 전부 평문으로 나간다.
+//
+// 참석자 스코핑을 여기서 한다 — 호출부(자동 발송·수동 공유)가 각자 좁히게 두면 한쪽이 빠져도
+// 타입 오류 없이 조용히 평문으로 나간다(실제로 그렇게 누락된 적이 있다). 워크스페이스 전체
+// 목록을 그대로 넘겨도 이 함수가 회의 참석자로 좁히므로 모든 경로가 같은 결과를 낸다.
 export function buildPostMessageBody(
   meeting: Meeting,
   channel: string,
   members: SlackMember[] = []
 ): { channel: string; text: string } {
-  return { channel, text: buildMeetingText(meeting, members) }
+  return { channel, text: buildMeetingText(meeting, membersInMeeting(meeting.participants, members)) }
 }
 
 // Slack Web API(chat.postMessage)에 POST한다. fetch를 주입받아 순수 로직과 분리된 TDD를 허용한다.
@@ -152,9 +156,10 @@ export async function listChannels(
 }
 
 // GET users.list — 워크스페이스 멤버 전체를 가져와 회의 참석자 후보로 쓴다(users:read 필요).
-// 실측(2026-08-04): 160명 반환에 407ms·262KB, 그중 실제 사람은 31명이었다. 봇·삭제 계정이
-// 대부분이라 toSlackMembers의 필터가 필수다. listChannels와 같은 cursor 페이징 관례를 따르되,
-// 멤버 수는 채널보다 많을 수 있어 상한을 10페이지(2000명)로 둔다.
+// listChannels와 같은 cursor 페이징 관례를 따르되, 멤버 수는 채널보다 많을 수 있어 상한을
+// 10페이지로 둔다. 알려진 한계: 그 이상(원시 2000명 초과)이면 뒷부분이 조용히 잘리고 현재
+// 사용자에게 알리는 경로가 없다 — 잘린 구간의 멤버는 참석자 후보에도, 멘션에도 나타나지 않는다.
+// 참고로 응답에는 봇·삭제 계정이 대부분이므로 원시 2000명이 실제 사람 2000명을 뜻하지 않는다.
 export async function listUsers(
   token: string,
   fetchImpl: typeof fetch,
@@ -221,7 +226,8 @@ export function sendSlackNotification(
   meeting: Meeting,
   token: string | null,
   channel: string | null,
-  deps: SendSlackNotificationDeps = defaultDeps
+  deps: SendSlackNotificationDeps = defaultDeps,
+  members: SlackMember[] = []
 ): void {
   if (!token || !channel) return
   // 요약이 없으면(전사만 저장된 상태) 발송을 건너뛴다 — 요약 생성 이후에만 Slack에 올라가야 한다.
@@ -234,7 +240,7 @@ export function sendSlackNotification(
   }
 
   try {
-    const body = deps.buildBody(meeting, channel)
+    const body = deps.buildBody(meeting, channel, members)
     void deps.post(token, body, deps.fetchImpl).catch((e) => {
       const message = withInviteHint(e instanceof Error ? e.message : String(e))
       deps.log('[slack] 회의 요약 발송 실패:', message)
@@ -260,15 +266,8 @@ export function notifySlackForMeeting(
 ): void {
   if (!channelId) return
   const token = loadToken()
-  if (!token) return
-  // 멘션 대상을 이 회의 참석자로 좁힌다 — 요약 모델이 회의에 없던 이름을 뽑아도 무관한
-  // 사람에게 알림이 가지 않는다.
-  const mentionable = membersInMeeting(meeting.participants, members)
-  send(meeting, token, channelId, {
-    ...defaultDeps,
-    notifyFailure,
-    buildBody: (m, c) => buildPostMessageBody(m, c, mentionable)
-  })
+  // 워크스페이스 전체 목록을 그대로 넘긴다 — 참석자 스코핑은 buildPostMessageBody가 한다.
+  if (token) send(meeting, token, channelId, { ...defaultDeps, notifyFailure }, members)
 }
 
 // 설정이 정하는 유효 기본 발송 채널 — 자동 발송(slackAutoSend)이 꺼져 있으면 기본 알림

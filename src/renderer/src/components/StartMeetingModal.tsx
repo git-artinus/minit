@@ -43,8 +43,10 @@ export function StartMeetingModal(props: {
   })
   const [slackTokenSaved, setSlackTokenSaved] = useState(false)
   const [slackChannels, setSlackChannels] = useState<SlackChannel[] | null>(null)
-  // 저장된 목록만 읽는다 — 여기서 동기화하면 모달이 늦게 뜨고 고르는 도중 목록이 흔들린다.
-  const [slackMembers, setSlackMembers] = useState<SlackMember[]>([])
+  // null = 아직 못 읽음(로딩 중이거나 실패). 빈 배열(=Slack 멤버가 실제로 0명)과 반드시
+  // 구분한다 — 못 읽은 상태를 0명으로 취급하면 start()에서 Slack 사용자가 게스트로 분류돼
+  // participants.json에 영구히 쌓인다.
+  const [slackMembers, setSlackMembers] = useState<SlackMember[] | null>(null)
 
   useEffect(() => {
     window.minuting
@@ -53,11 +55,13 @@ export function StartMeetingModal(props: {
       .catch(() => setRoster(null))
   }, [])
 
+  // 저장된 목록만 읽는다 — 여기서 동기화하면 모달이 늦게 뜨고 고르는 도중 목록이 흔들린다.
+  // 실패 시 null을 유지한다(빈 배열로 떨어뜨리지 않는다 — 위 상태 선언 참조).
   useEffect(() => {
     window.minuting
       .getSlackMembers()
       .then((s) => setSlackMembers(s.members))
-      .catch(() => setSlackMembers([]))
+      .catch((e) => console.error('[slack] 멤버 목록을 불러오지 못했습니다:', e))
   }, [])
 
   useEffect(() => {
@@ -81,6 +85,9 @@ export function StartMeetingModal(props: {
 
   // 로스터 파일이 있어도 참석자가 비어 있으면(신규 사용자 등) 자유 입력 폴백을 유지한다.
   const hasRoster = !!roster && roster.participants.length > 0
+  // 렌더에서는 미로드(null)를 빈 목록과 같이 취급해도 안전하다 — 칩이 안 뜰 뿐이다.
+  // 구분이 필요한 곳은 start()의 로스터 자동 등록뿐이다.
+  const slackChips = slackMembers ?? []
 
   const toggle = (name: string): void => {
     setSelected((prev) => {
@@ -154,9 +161,12 @@ export function StartMeetingModal(props: {
     })
     // 자동 등록(v0.4.0 ③a) — 로스터에 없는 이름을 등록한다. 실패해도 회의 시작 자체는
     // 이미 onStart로 진행되었으므로 격리한다(회귀 없이 조용히 무시).
-    // Slack 사용자는 제외한다 — 넣으면 게스트 목록에 같은 사람이 쌓여 중복이 재생산된다.
-    const { guests } = splitParticipants(finalParticipants, slackMembers)
-    window.minuting.addRosterParticipants(guests).catch(() => {})
+    // 멤버 목록을 못 읽었으면(null) 아무것도 등록하지 않는다 — 그 상태에서 등록하면 Slack
+    // 사용자가 게스트로 잘못 분류돼 개인 명단에 남고, 동기화가 복구돼도 지워지지 않는다.
+    if (slackMembers !== null) {
+      const { guests } = splitParticipants(finalParticipants, slackMembers)
+      window.minuting.addRosterParticipants(guests).catch(() => {})
+    }
   }
 
   // 게스트/참석자 태그 입력 — 로스터 있음/없음 두 코드패스에서 동일하게 재사용
@@ -222,13 +232,13 @@ export function StartMeetingModal(props: {
             ))}
           </select>
         </div>
-        {hasRoster || slackMembers.length > 0 ? (
+        {hasRoster || slackChips.length > 0 ? (
           <>
-            {slackMembers.length > 0 && (
+            {slackChips.length > 0 && (
               <div className="chip-group">
                 <div className="chip-group-label">Slack</div>
                 <div className="chip-group-body">
-                  {slackMembers.map((m) => (
+                  {slackChips.map((m) => (
                     <button
                       key={m.id}
                       type="button"
@@ -245,9 +255,7 @@ export function StartMeetingModal(props: {
             <div className="chip-group">
               <div className="chip-group-label">게스트</div>
               {hasRoster && (
-                <div className="chip-group-body">
-                  {/* Slack 표시이름과 겹치는 항목은 숨긴다 — 같은 사람이 두 번 뜨지 않게. */}
-                  {visibleGuests(roster!.participants, slackMembers).map((name) => (
+                <div className="chip-group-body">                  {visibleGuests(roster!.participants, slackChips).map((name) => (
                     <button
                       key={name}
                       type="button"
