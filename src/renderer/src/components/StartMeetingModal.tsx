@@ -40,7 +40,11 @@ export function StartMeetingModal(props: {
 
   // Slack 채널 override(#2) — undefined=설정 기본값 사용 / null=발송 안 함 / string=이 채널로.
   const [channelOverride, setChannelOverride] = useState<string | null | undefined>(undefined)
-  const [slackDefault, setSlackDefault] = useState<{ id: string | null; name: string | null; autoSend: boolean }>({
+  const [slackDefault, setSlackDefault] = useState<{
+    id: string | null
+    name: string | null
+    autoSend: boolean
+  }>({
     id: null,
     name: null,
     autoSend: false
@@ -73,7 +77,11 @@ export function StartMeetingModal(props: {
     window.minuting
       .getSettings()
       .then((s: AppSettings) =>
-        setSlackDefault({ id: s.slackChannelId, name: s.slackChannelName, autoSend: s.slackAutoSend })
+        setSlackDefault({
+          id: s.slackChannelId,
+          name: s.slackChannelName,
+          autoSend: s.slackAutoSend
+        })
       )
       .catch(() => {})
     window.minuting
@@ -85,7 +93,10 @@ export function StartMeetingModal(props: {
   // 드롭다운을 처음 열 때(focus) 목록을 지연 조회한다(설정 화면과 동일 관례).
   const loadChannels = (): void => {
     if (slackChannels) return
-    window.minuting.listSlackChannels().then(setSlackChannels).catch(() => {})
+    window.minuting
+      .listSlackChannels()
+      .then(setSlackChannels)
+      .catch(() => {})
   }
 
   // 로스터 파일이 있어도 참석자가 비어 있으면(신규 사용자 등) 자유 입력 폴백을 유지한다.
@@ -218,113 +229,130 @@ export function StartMeetingModal(props: {
   return (
     <div className="modal-backdrop" onClick={props.onClose}>
       {/* 로딩↔폴백 전환 시 폭이 360↔420으로 튀지 않도록 로스터 모드 기준 폭으로 고정 */}
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-wide modal-scrollable" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
           <h2>회의 시작</h2>
           <button type="button" className="icon-btn" onClick={props.onClose} aria-label="닫기">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-              <path d="M5 5l14 14M19 5L5 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path
+                d="M5 5l14 14M19 5L5 19"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         </header>
-        <div className="modal-section">
-          <div className="modal-section-title">회의 정보</div>
-          <input
-            placeholder="회의 제목 (비우면 자동)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            autoFocus
-          />
-          <div className="chip-group">
-            <div className="chip-group-label">회의 유형</div>
-            <select value={meetingType} onChange={(e) => setMeetingType(e.target.value)}>
-              {MEETING_TYPES.map((t) => (
-                <option key={t.id} value={t.id}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="modal-section">
-          <div className="modal-section-title">참여자</div>
-          {hasRoster || slackChips.length > 0 ? (
-            <>
-              {slackChips.length > 0 && (
-                <div className="chip-group">
-                  <div className="chip-group-label">Slack</div>
-                  <div className="chip-group-body">
-                    {shownSlackChips.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className={`chip${selected.has(m.name) ? ' selected' : ''}`}
-                        onClick={() => toggle(m.name)}
-                      >
-                        {m.name}
-                      </button>
-                    ))}
-                    {hiddenSlackCount > 0 && (
-                      <button type="button" className="chip-more" onClick={() => setSlackExpanded(true)}>
-                        +{hiddenSlackCount}명 더보기
-                      </button>
-                    )}
-                    {slackExpanded && slackChips.length > SLACK_CHIPS_COLLAPSED && (
-                      <button type="button" className="chip-more" onClick={() => setSlackExpanded(false)}>
-                        접기
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div className="chip-group">
-                <div className="chip-group-label">게스트</div>
-                {hasRoster && (
-                  <div className="chip-group-body">
-                    {visibleGuests(roster!.participants, slackChips).map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        className={`chip${selected.has(name) ? ' selected' : ''}`}
-                        onClick={() => toggle(name)}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {tagInput}
-              </div>
-            </>
-          ) : roster !== undefined ? (
-            tagInput
-          ) : (
-            <p className="env-desc">명단 불러오는 중…</p>
-          )}
-        </div>
-
-        {slackTokenSaved && (
+        <div className="modal-body">
           <div className="modal-section">
-            <div className="modal-section-title">자동화</div>
+            <div className="modal-section-title">회의 정보</div>
+            <input
+              placeholder="회의 제목 (비우면 자동)"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
             <div className="chip-group">
-              <div className="chip-group-label">요약 자동 발송</div>
-              <SlackChannelSelect
-                channels={slackChannels}
-                value={channelOverrideToValue(channelOverride)}
-                onFocus={loadChannels}
-                onChange={(value) => setChannelOverride(channelValueToOverride(value))}
-                leading={
-                  <>
-                    <option value={CHANNEL_DEFAULT}>
-                      {defaultChannelOptionLabel(slackDefault.autoSend, slackDefault.name)}
-                    </option>
-                    <option value={CHANNEL_NONE}>(발송 안 함)</option>
-                  </>
-                }
-              />
+              <div className="chip-group-label">회의 유형</div>
+              <select value={meetingType} onChange={(e) => setMeetingType(e.target.value)}>
+                {MEETING_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        )}
-        <button className="btn-primary btn-hero modal-cta-sticky" onClick={start}>
+
+          <div className="modal-section">
+            <div className="modal-section-title">참여자</div>
+            {hasRoster || slackChips.length > 0 ? (
+              <>
+                {slackChips.length > 0 && (
+                  <div className="chip-group">
+                    <div className="chip-group-label">Slack</div>
+                    <div className="chip-group-body">
+                      {shownSlackChips.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`chip${selected.has(m.name) ? ' selected' : ''}`}
+                          onClick={() => toggle(m.name)}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                      {hiddenSlackCount > 0 && (
+                        <button
+                          type="button"
+                          className="chip-more"
+                          onClick={() => setSlackExpanded(true)}
+                        >
+                          +{hiddenSlackCount}명 더보기
+                        </button>
+                      )}
+                      {slackExpanded && slackChips.length > SLACK_CHIPS_COLLAPSED && (
+                        <button
+                          type="button"
+                          className="chip-more"
+                          onClick={() => setSlackExpanded(false)}
+                        >
+                          접기
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="chip-group">
+                  <div className="chip-group-label">게스트</div>
+                  {hasRoster && (
+                    <div className="chip-group-body">
+                      {visibleGuests(roster!.participants, slackChips).map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className={`chip${selected.has(name) ? ' selected' : ''}`}
+                          onClick={() => toggle(name)}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {tagInput}
+                </div>
+              </>
+            ) : roster !== undefined ? (
+              tagInput
+            ) : (
+              <p className="env-desc">명단 불러오는 중…</p>
+            )}
+          </div>
+
+          {slackTokenSaved && (
+            <div className="modal-section">
+              <div className="modal-section-title">자동화</div>
+              <div className="chip-group">
+                <div className="chip-group-label">요약 자동 발송</div>
+                <SlackChannelSelect
+                  channels={slackChannels}
+                  value={channelOverrideToValue(channelOverride)}
+                  onFocus={loadChannels}
+                  onChange={(value) => setChannelOverride(channelValueToOverride(value))}
+                  leading={
+                    <>
+                      <option value={CHANNEL_DEFAULT}>
+                        {defaultChannelOptionLabel(slackDefault.autoSend, slackDefault.name)}
+                      </option>
+                      <option value={CHANNEL_NONE}>(발송 안 함)</option>
+                    </>
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        <button className="btn-primary btn-hero" onClick={start}>
           녹음 시작
         </button>
       </div>
