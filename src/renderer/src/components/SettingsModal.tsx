@@ -4,6 +4,7 @@ import type {
   AutoCheckStatus,
   GithubLoginState,
   SlackChannel,
+  SlackMembersState,
   SlackSendScope,
   SlackTokenState,
   UpdateCheckResult,
@@ -11,6 +12,7 @@ import type {
 } from '../../../shared/types'
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 import { claudeStatusView } from '../state/claude-status-view'
+import { slackSyncErrorText } from '../state/slack-sync-error'
 import { changelogUrl, releasesPageUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
@@ -71,6 +73,8 @@ export function SettingsModal(props: {
   const [slackChannels, setSlackChannels] = useState<SlackChannel[] | null>(null)
   const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
   const [slackError, setSlackError] = useState<string | null>(null)
+  const [slackMembers, setSlackMembers] = useState<SlackMembersState | null>(null)
+  const [slackMembersSyncing, setSlackMembersSyncing] = useState(false)
 
   // Claude CLI 상태(#8) — 설치 여부(which)가 아니라 실제 실행 결과다. 상태는 SetupProvider가
   // 단일 소스로 들고 있다 — 각자 조회하면 이 화면과 설치 패널이 서로 다른 상태를 보여주고,
@@ -153,6 +157,14 @@ export function SettingsModal(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slackToken.saved가 true로 바뀔 때만 반응한다.
   }, [props.open, slackToken?.saved])
 
+  // 저장된 멤버 목록만 읽는다(동기화는 하지 않는다). 실패 사유는 파일에 함께 저장돼 있으므로
+  // 기동 시 배경 동기화가 실패했어도 여기서 그 사유를 받아 안내를 띄울 수 있다.
+  // 해제 시 초기화는 이 파일의 clearSlackToken이 맡는다.
+  useEffect(() => {
+    if (!props.open || !slackToken?.saved) return
+    window.minuting.getSlackMembers().then(setSlackMembers).catch(() => {})
+  }, [props.open, slackToken?.saved])
+
   if (!props.open) return null
 
   const updateAutoPush = async (autoPush: boolean): Promise<void> => {
@@ -224,9 +236,22 @@ export function SettingsModal(props: {
       await window.minuting.clearSlackToken()
       setSlackToken({ saved: false })
       setSlackChannels(null)
+      setSlackMembers(null)
       setSettings((s) => (s ? { ...s, slackChannelId: null, slackChannelName: null, slackAutoSend: false } : s))
     } catch {
       setSlackError('연동 해제에 실패했습니다.')
+    }
+  }
+
+  // 실패해도 기존 목록이 유지되므로(main이 저장분을 그대로 돌려준다) 화면을 비우지 않는다.
+  const syncSlackMembers = async (): Promise<void> => {
+    setSlackMembersSyncing(true)
+    try {
+      setSlackMembers(await window.minuting.syncSlackMembers())
+    } catch {
+      setSlackError('참석자 동기화에 실패했습니다.')
+    } finally {
+      setSlackMembersSyncing(false)
     }
   }
 
@@ -629,6 +654,31 @@ export function SettingsModal(props: {
               <div className="setting-desc">
                 아이디어·간이 회의는 액션아이템 섹션이 없어 &apos;+ 액션아이템&apos;도 요약만 발송됩니다.
               </div>
+
+              <div className="setting-sublabel">회의 참석자 동기화</div>
+              <div className="setting-desc">
+                Slack 멤버를 회의 참석자 후보로 가져옵니다. 액션 아이템 담당자가 Slack 멤버와
+                일치하면 발송 시 멘션(@)으로 보냅니다.
+              </div>
+              <div className="setting-path-row">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => void syncSlackMembers()}
+                  disabled={slackMembersSyncing}
+                >
+                  {slackMembersSyncing ? '동기화 중…' : '참석자 동기화'}
+                </button>
+                <span className="setting-desc">
+                  Slack 멤버 {slackMembers?.members.length ?? 0}명
+                  {slackMembers?.syncedAt
+                    ? ` · 마지막 동기화 ${new Date(slackMembers.syncedAt).toLocaleString('ko-KR')}`
+                    : ''}
+                </span>
+              </div>
+              {slackMembers?.lastError && (
+                <p className="setting-error">{slackSyncErrorText(slackMembers.lastError)}</p>
+              )}
             </>
           )}
           {slackError && <p className="setting-error">{slackError}</p>}

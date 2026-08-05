@@ -30,7 +30,8 @@ import {
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { buildPostMessageBody, defaultSlackChannelId, listChannels, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
+import { buildPostMessageBody, defaultSlackChannelId, listChannels, listUsers, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
+import { deleteSlackMembers, loadSlackMembers, saveSlackMembers, syncSlackMembers } from './slack-members-store'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
 import { deleteToken as deleteGithubToken, loadToken as loadGithubToken, saveToken as saveGithubToken } from './github/token-store'
@@ -66,6 +67,9 @@ import type {
   RegenerateResult,
   Roster,
   SlackChannel,
+  SlackMember,
+  SlackMembers,
+  SlackMembersState,
   SlackSendFailure,
   SlackSendScope,
   SlackTokenState,
@@ -108,6 +112,22 @@ export function registerIpc(
     readSettingsFile: readSlackSettingsFile,
     writeSettingsFile: writeSlackSettingsFile
   })
+  // ── Slack 멤버(회의 참석자 후보) ────────────────────────────────────────
+  const loadStoredSlackMembers = (): SlackMembers =>
+    loadSlackMembers(configDir, fs.existsSync, (p) => fs.readFileSync(p, 'utf-8'))
+  const readSlackMembers = (): SlackMember[] => loadStoredSlackMembers().members
+
+  // 180행 기동 IIFE가 동기적으로 호출하므로 그보다 먼저 선언해야 한다(const는 TDZ).
+  // 분기·저장 로직은 slack-members-store가 갖고 여기는 실제 의존성만 묶는다.
+  const runSlackMembersSync = (): Promise<SlackMembers> =>
+    syncSlackMembers({
+      loadStored: loadStoredSlackMembers,
+      loadToken: () => loadSlackToken(configDir, { fs, safeStorage }),
+      fetchMembers: (token) => listUsers(token, fetch),
+      save: (payload) => saveSlackMembers(configDir, payload, (p, content) => fs.writeFileSync(p, content)),
+      now: () => new Date().toISOString()
+    })
+
   // GitHub 원격 pull 스로틀 상태(모듈이 아닌 registerIpc 클로저 — 앱 생명주기 동안 1회만
   // 호출되므로 loginSessionManager와 동일하게 여기 하나로 충분하다). 0=한 번도 pull한 적 없음.
   let lastPulledAt = 0
@@ -147,6 +167,12 @@ export function registerIpc(
     } catch (e) {
       console.error('[roster] 최초 시드 실패:', e instanceof Error ? e.message : e)
     }
+  })()
+  // Slack 멤버 목록 기동 시 1회 갱신 — 실측 407ms라 화면을 막지 않고 백그라운드로 돌린다.
+  // 실패해도 저장된 목록이 그대로 쓰이므로 오프라인에서도 회의 시작에 지장이 없다.
+  void (async (): Promise<void> => {
+    if (loadSlackToken(configDir, { fs, safeStorage }) === null) return
+    await runSlackMembersSync()
   })()
   // settings:get·settings:update·slack:selectChannel이 공유하는 렌더러 노출용 뷰. repoRootIsGitRepo는
   // 매번 실제 경로를 재검사한다(repoRoot가 바뀔 때마다 캐시를 갱신하는 대신 단순함을 택함 — fs.existsSync
@@ -388,7 +414,9 @@ export function registerIpc(
           resolveSlackChannelId(meta.slackChannelId, defaultSlackChannelId(settings)),
           settings.slackSendScope,
           () => loadSlackToken(configDir, { fs, safeStorage }),
-          sendSlackFailureNotice
+          sendSlackFailureNotice,
+          undefined,
+          readSlackMembers()
         )
 
         // GitHub 업로드(로그인+레포 설정+자동 동기화 켜짐일 때만, 단방향 업로드) — syncMeeting도
@@ -563,7 +591,9 @@ export function registerIpc(
       defaultSlackChannelId(settings),
       settings.slackSendScope,
       () => loadSlackToken(configDir, { fs, safeStorage }),
-      sendSlackFailureNotice
+      sendSlackFailureNotice,
+      undefined,
+      readSlackMembers()
     )
     return result
   })
@@ -786,11 +816,15 @@ export function registerIpc(
     saved: loadSlackToken(configDir, { fs, safeStorage }) !== null,
   }))
 
-  ipcMain.handle('slack:saveToken', (_e, token: string): SlackTokenState => {
+  ipcMain.handle('slack:saveToken', async (_e, token: string): Promise<SlackTokenState> => {
     if (typeof token !== 'string' || !token.startsWith('xoxb-')) {
       throw new Error('invalid slack token')
     }
     saveSlackToken(configDir, token, { fs, safeStorage })
+    // 연결 직후 1회 동기화를 await한다. 던져놓고 반환하면 렌더러가 곧바로 slack:membersState를
+    // 읽어 아직 안 써진 파일을 보고 "0명"을 표시한다(users.list는 수백 ms가 걸린다). 사용자가
+    // 이미 저장 버튼을 누르고 기다리는 시점이라 여기서 기다리는 편이 자연스럽다.
+    await runSlackMembersSync()
     return { saved: true }
   })
 
@@ -800,6 +834,14 @@ export function registerIpc(
     // 등록했을 때 검증되지 않은 채널로 발송될 수 있다.
     settings = { ...settings, slackChannelId: null, slackChannelName: null, slackAutoSend: false }
     saveSettings(configDir, settings)
+    // 멤버 목록은 워크스페이스 종속 데이터라 토큰과 생애주기를 맞춘다. 설정 초기화 뒤에 두고
+    // 따로 흡수한다 — 여기서 던지면(EPERM·EBUSY 등) 위 초기화가 통째로 건너뛰어지는데, 토큰은
+    // 이미 지워진 뒤라 "해제 실패" 안내가 사용자를 잘못된 방향으로 보낸다.
+    try {
+      deleteSlackMembers(configDir, (p) => fs.rmSync(p, { force: true }))
+    } catch (e) {
+      console.error('[slack] 멤버 목록 삭제 실패:', e instanceof Error ? e.message : e)
+    }
   })
 
   ipcMain.handle('slack:listChannels', async (): Promise<SlackChannel[]> => {
@@ -839,6 +881,14 @@ export function registerIpc(
     return toAppSettings()
   })
 
+  // 저장된 멤버 목록 조회 — 회의 시작 모달과 설정 화면이 쓴다. 여기서는 동기화하지 않는다
+  // (모달이 즉시 떠야 하고, 참석자를 고르는 도중 목록이 흔들리면 안 된다).
+  // 저장분을 그대로 돌려준다(lastError 포함) — 기동 시 백그라운드 동기화가 실패했어도 그 사유를
+  // 설정 화면이 볼 수 있어야 users:read 안내가 뜬다.
+  ipcMain.handle('slack:membersState', (): SlackMembersState => loadStoredSlackMembers())
+
+  ipcMain.handle('slack:syncMembers', (): Promise<SlackMembersState> => runSlackMembersSync())
+
   // ── 회의록 공유(수동) ──────────────────────────────────────────────────
   // 저장 직후 자동 발송(notifySlackForMeeting)과 달리 사용자가 직접 누른 액션이므로 실패를
   // 삼키지 않는다 — 예외를 그대로 렌더러로 올려 공유 모달이 사유를 표시한다.
@@ -872,9 +922,11 @@ export function registerIpc(
     const token = loadSlackToken(configDir, { fs, safeStorage })
     if (!token) throw new Error('Slack 봇 토큰이 등록되어 있지 않습니다')
     const meeting = parseMeeting(filename, readMeetingFile(filename))
+    // 자동 발송과 동일하게 멤버를 넘긴다 — 안 넘기면 같은 회의록이 공유 경로에서만 멘션 없이
+    // 나간다(buildPostMessageBody가 참석자 스코핑까지 함께 처리한다).
     await postChatMessage(
       token,
-      buildPostMessageBody(meeting, channelId, settings.slackSendScope),
+      buildPostMessageBody(meeting, channelId, settings.slackSendScope, readSlackMembers()),
       fetch
     )
   })

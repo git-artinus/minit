@@ -41,9 +41,14 @@ Claude로 전송됩니다.**
 
 설정하면 **회의 요약**이 지정한 채널로 발송됩니다. **기본값은 발송 안 함**입니다.
 
-Minit이 요구하는 Slack 권한은 `chat:write`·`channels:read`·`groups:read` 세 개이며,
+Minit이 요구하는 Slack 권한은 `chat:write`·`channels:read`·`groups:read`·`users:read` 네 개이며,
 이 권한으로는 **채널의 기존 대화 내용을 읽을 수 없습니다.** 봇은 어떤 채널에도 자동으로
 참여하지 않습니다.
+
+`users:read`는 회의 참석자 후보 목록과 담당자 멘션에 쓰이며, 워크스페이스 멤버의 **이름과
+ID만** 읽습니다. **이메일 주소는 읽지 않습니다** — 그건 별도 권한(`users:read.email`)이
+있어야 하며 Minit은 요구하지 않습니다. 가져온 멤버 목록은 기기 안에만 저장되고, Slack 연동을
+해제하면 함께 삭제됩니다.
 
 → [Slack 자동 발송](../slack/)
 

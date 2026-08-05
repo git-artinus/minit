@@ -8,6 +8,7 @@ import type {
   GithubLoginStatusEvent,
   RegenerateResult,
   SlackChannel,
+  SlackMembersState,
   SlackSendFailure,
   SlackSendScope,
   SlackTokenState,
@@ -113,6 +114,10 @@ const minutingApi = {
   selectSlackChannel: (channelId: string, channelName: string): Promise<AppSettings> =>
     ipcRenderer.invoke('slack:selectChannel', channelId, channelName),
   clearSlackChannel: (): Promise<AppSettings> => ipcRenderer.invoke('slack:clearChannel'),
+  // Slack 멤버 동기화 — 회의 시작 화면의 Slack 참석자 후보. membersState는 저장된 목록만
+  // 읽고(즉시 반환), syncMembers가 users.list를 호출해 갱신한다.
+  getSlackMembers: (): Promise<SlackMembersState> => ipcRenderer.invoke('slack:membersState'),
+  syncSlackMembers: (): Promise<SlackMembersState> => ipcRenderer.invoke('slack:syncMembers'),
   // 자동 업데이트(v0.4.0 ③b)
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
   // 배너가 마운트될 때 이미 감지된 새 버전을 되찾는다 — 기동 확인이 렌더러 구독보다 앞서면

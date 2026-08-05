@@ -21,18 +21,29 @@ import { Tabs, TabItem } from '@astrojs/starlight/components'
        앱 이름(예: Minit)과 워크스페이스를 선택합니다.
        승인제 워크스페이스라면 설치 시 관리자 승인이 필요할 수 있습니다.
 
-    2. **OAuth & Permissions** → **Scopes** → **Bot Token Scopes** 에 아래 3개를 추가합니다.
+    2. **OAuth & Permissions** → **Scopes** → **Bot Token Scopes** 에 아래 4개를 추가합니다.
 
        | Scope | 용도 |
        | --- | --- |
        | `chat:write` | 지정한 채널에 회의 요약 메시지를 발송합니다 |
        | `channels:read` | 봇이 참여한 공개 채널 목록을 조회해 설정 화면 드롭다운에 표시합니다 |
        | `groups:read` | 봇이 참여한 비공개 채널 목록을 조회합니다 |
+       | `users:read` | 워크스페이스 멤버 목록을 조회해 회의 참석자 후보로 쓰고, 액션 아이템 담당자를 멘션(@)으로 발송합니다 |
 
        :::note[이 권한으로 할 수 없는 것]
-       이 3개 스코프로는 **채널의 기존 대화 내용을 읽을 수 없습니다.** 봇이 참여한 채널
+       이 4개 스코프로는 **채널의 기존 대화 내용을 읽을 수 없습니다.** 봇이 참여한 채널
        목록 조회와 메시지 발송만 가능합니다. 봇은 어떤 채널에도 자동으로 참여하지 않으며,
        팀원이 채널에서 직접 초대해야만 그 채널이 목록에 나타납니다.
+
+       `users:read` 로는 멤버의 이름과 ID만 읽습니다. **이메일 주소는 읽을 수 없습니다** —
+       그건 별도 권한(`users:read.email`)이 있어야 하며 Minit은 요구하지 않습니다.
+       :::
+
+       :::tip[이미 Minit을 쓰고 있다면]
+       `users:read` 를 추가한 뒤 아래 3번의 **Reinstall to Workspace** 로 재설치하면 됩니다.
+       봇 토큰 값은 바뀌지 않으므로 팀원이 Minit에 토큰을 다시 입력할 필요는 없습니다.
+
+       이전 버전 안내를 따라 `channels:join` 을 추가했다면 제거해도 됩니다 — 더 이상 쓰지 않습니다.
        :::
 
     3. **Install to Workspace**(이미 설치했다면 **Reinstall to Workspace**) → 승인
