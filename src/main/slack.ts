@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { findMentionId } from '../shared/slack-members'
+import { findMentionId, toSlackMembers, type SlackApiUser } from '../shared/slack-members'
 import type { ActionItem, Meeting, MeetingSection, SlackMember, SlackSendFailure } from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
@@ -149,6 +149,48 @@ export async function listChannels(
   }
 
   return channels
+}
+
+// GET users.list — 워크스페이스 멤버 전체를 가져와 회의 참석자 후보로 쓴다(users:read 필요).
+// 실측(2026-08-04): 160명 반환에 407ms·262KB, 그중 실제 사람은 31명이었다. 봇·삭제 계정이
+// 대부분이라 toSlackMembers의 필터가 필수다. listChannels와 같은 cursor 페이징 관례를 따르되,
+// 멤버 수는 채널보다 많을 수 있어 상한을 10페이지(2000명)로 둔다.
+export async function listUsers(
+  token: string,
+  fetchImpl: typeof fetch,
+  timeoutMs = 15_000
+): Promise<SlackMember[]> {
+  const raw: SlackApiUser[] = []
+  let cursor: string | undefined
+  const MAX_PAGES = 10
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const url = new URL('https://slack.com/api/users.list')
+    url.searchParams.set('limit', '200')
+    if (cursor) url.searchParams.set('cursor', cursor)
+
+    const res = await fetchWithTimeout(
+      fetchImpl,
+      url.toString(),
+      { headers: { Authorization: `Bearer ${token}` } },
+      timeoutMs
+    )
+    if (!res.ok) throw new Error(`Slack API 응답 실패: ${res.status}`)
+    const json = (await res.json()) as {
+      ok: boolean
+      error?: string
+      members?: SlackApiUser[]
+      response_metadata?: { next_cursor?: string }
+    }
+    if (!json.ok) throw new Error('slack: ' + (json.error ?? 'unknown_error'))
+
+    raw.push(...(json.members ?? []))
+
+    cursor = json.response_metadata?.next_cursor
+    if (!cursor) break
+  }
+
+  return toSlackMembers(raw)
 }
 
 type SendSlackNotificationDeps = {

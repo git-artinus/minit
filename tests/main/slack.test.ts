@@ -3,6 +3,7 @@ import {
   buildPostMessageBody,
   escapeMrkdwn,
   listChannels,
+  listUsers,
   notifySlackForMeeting,
   postChatMessage,
   defaultSlackChannelId,
@@ -524,6 +525,71 @@ describe('defaultSlackChannelId', () => {
   test('자동 발송 꺼짐 + override 미지정이면 발송하지 않는다', () => {
     const fallback = defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: false })
     expect(resolveSlackChannelId(undefined, fallback)).toBeNull()
+  })
+})
+
+describe('listUsers', () => {
+  test('봇·삭제 계정을 거른 멤버 목록을 반환한다', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        members: [
+          { id: 'U001', name: 'ivy', profile: { display_name: 'Ivy(김하나)' } },
+          { id: 'U002', name: 'bot', is_bot: true, profile: { display_name: 'Bot' } },
+          { id: 'USLACKBOT', name: 'slackbot', profile: { display_name: 'Slackbot' } }
+        ]
+      })
+    )
+    const result = await listUsers('xoxb-t', fetchImpl as unknown as typeof fetch)
+    expect(result).toEqual([{ id: 'U001', name: 'Ivy(김하나)' }])
+  })
+
+  test('cursor가 있으면 다음 페이지를 이어서 조회한다', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ok: true,
+          members: [{ id: 'U001', profile: { display_name: 'A' } }],
+          response_metadata: { next_cursor: 'c1' }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ ok: true, members: [{ id: 'U002', profile: { display_name: 'B' } }] })
+      )
+    const result = await listUsers('xoxb-t', fetchImpl as unknown as typeof fetch)
+    expect(result.map((m) => m.id)).toEqual(['U001', 'U002'])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  test('limit=200으로 요청한다', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true, members: [] }))
+    await listUsers('xoxb-t', fetchImpl as unknown as typeof fetch)
+    expect(String(fetchImpl.mock.calls[0][0])).toContain('limit=200')
+  })
+
+  test('ok:false면 에러 코드를 담아 throw한다', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: false, error: 'missing_scope' }))
+    await expect(listUsers('xoxb-t', fetchImpl as unknown as typeof fetch)).rejects.toThrow(
+      'missing_scope'
+    )
+  })
+
+  test('HTTP 실패면 상태 코드를 담아 throw한다', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({}, 500))
+    await expect(listUsers('xoxb-t', fetchImpl as unknown as typeof fetch)).rejects.toThrow('500')
+  })
+
+  test('빈 cursor는 마지막 페이지로 본다', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        members: [{ id: 'U001', profile: { display_name: 'A' } }],
+        response_metadata: { next_cursor: '' }
+      })
+    )
+    await listUsers('xoxb-t', fetchImpl as unknown as typeof fetch)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
 
