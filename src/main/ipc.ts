@@ -30,7 +30,8 @@ import {
 } from './roster'
 import { collectParticipants } from '../shared/meeting-query'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { buildPostMessageBody, defaultSlackChannelId, listChannels, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
+import { buildPostMessageBody, defaultSlackChannelId, listChannels, listUsers, notifySlackForMeeting, postChatMessage, resolveSlackChannelId } from './slack'
+import { deleteSlackMembers, loadSlackMembers, saveSlackMembers } from './slack-members-store'
 import { pollForToken, requestDeviceCode } from './github/device-flow'
 import { createLoginSessionManager } from './github/login-session'
 import { deleteToken as deleteGithubToken, loadToken as loadGithubToken, saveToken as saveGithubToken } from './github/token-store'
@@ -66,6 +67,8 @@ import type {
   RegenerateResult,
   Roster,
   SlackChannel,
+  SlackMember,
+  SlackMembersState,
   SlackSendFailure,
   SlackTokenState,
   UpdateCheckResult
@@ -107,6 +110,31 @@ export function registerIpc(
     readSettingsFile: readSlackSettingsFile,
     writeSettingsFile: writeSlackSettingsFile
   })
+  // ── Slack 멤버(회의 참석자 후보) ────────────────────────────────────────
+  // 기동 초기화·IPC 핸들러가 모두 쓰므로 둘보다 먼저 선언한다(const라 TDZ에 걸린다).
+  const readSlackMembers = (): SlackMember[] =>
+    loadSlackMembers(configDir, fs.existsSync, (p) => fs.readFileSync(p, 'utf-8')).members
+
+  // 동기화 실패는 흡수하고 기존 저장분을 유지한다 — 오프라인·스코프 미보유에서도 회의 시작
+  // 화면이 동작해야 한다. 실패 사유는 설정 화면 안내용으로 error에 담아 돌려준다.
+  const syncSlackMembers = async (): Promise<SlackMembersState> => {
+    const stored = loadSlackMembers(configDir, fs.existsSync, (p) => fs.readFileSync(p, 'utf-8'))
+    const token = loadSlackToken(configDir, { fs, safeStorage })
+    if (!token) return { ...stored, error: 'Slack 봇 토큰이 등록되어 있지 않습니다' }
+
+    try {
+      const members = await listUsers(token, fetch)
+      const saved = saveSlackMembers(configDir, members, new Date().toISOString(), (p, content) =>
+        fs.writeFileSync(p, content)
+      )
+      return { ...saved, error: null }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      console.error('[slack] 멤버 동기화 실패:', message)
+      return { ...stored, error: message }
+    }
+  }
+
   // GitHub 원격 pull 스로틀 상태(모듈이 아닌 registerIpc 클로저 — 앱 생명주기 동안 1회만
   // 호출되므로 loginSessionManager와 동일하게 여기 하나로 충분하다). 0=한 번도 pull한 적 없음.
   let lastPulledAt = 0
@@ -146,6 +174,12 @@ export function registerIpc(
     } catch (e) {
       console.error('[roster] 최초 시드 실패:', e instanceof Error ? e.message : e)
     }
+  })()
+  // Slack 멤버 목록 기동 시 1회 갱신 — 실측 407ms라 화면을 막지 않고 백그라운드로 돌린다.
+  // 실패해도 저장된 목록이 그대로 쓰이므로 오프라인에서도 회의 시작에 지장이 없다.
+  void (async (): Promise<void> => {
+    if (loadSlackToken(configDir, { fs, safeStorage }) === null) return
+    await syncSlackMembers()
   })()
   // settings:get·settings:update·slack:selectChannel이 공유하는 렌더러 노출용 뷰. repoRootIsGitRepo는
   // 매번 실제 경로를 재검사한다(repoRoot가 바뀔 때마다 캐시를 갱신하는 대신 단순함을 택함 — fs.existsSync
@@ -385,7 +419,9 @@ export function registerIpc(
           meeting,
           resolveSlackChannelId(meta.slackChannelId, defaultSlackChannelId(settings)),
           () => loadSlackToken(configDir, { fs, safeStorage }),
-          sendSlackFailureNotice
+          sendSlackFailureNotice,
+          undefined,
+          readSlackMembers()
         )
 
         // GitHub 업로드(로그인+레포 설정+자동 동기화 켜짐일 때만, 단방향 업로드) — syncMeeting도
@@ -559,7 +595,9 @@ export function registerIpc(
       result.meeting,
       defaultSlackChannelId(settings),
       () => loadSlackToken(configDir, { fs, safeStorage }),
-      sendSlackFailureNotice
+      sendSlackFailureNotice,
+      undefined,
+      readSlackMembers()
     )
     return result
   })
@@ -783,11 +821,15 @@ export function registerIpc(
       throw new Error('invalid slack token')
     }
     saveSlackToken(configDir, token, { fs, safeStorage })
+    // 연결 직후 1회 동기화 — 결과를 기다리지 않는다(설정 화면이 slack:membersState로 따로 읽는다).
+    void syncSlackMembers()
     return { saved: true }
   })
 
   ipcMain.handle('slack:clearToken', (): void => {
     deleteSlackToken(configDir, { fs })
+    // 멤버 목록은 워크스페이스 종속 데이터라 토큰과 생애주기를 맞춘다.
+    deleteSlackMembers(configDir, (p) => fs.rmSync(p, { force: true }))
     // github:logout과 동일한 원칙(리뷰 Fix 5) — 토큰 없이 채널 선택만 남으면 다음에 새 토큰을
     // 등록했을 때 검증되지 않은 채널로 발송될 수 있다.
     settings = { ...settings, slackChannelId: null, slackChannelName: null, slackAutoSend: false }
@@ -830,6 +872,15 @@ export function registerIpc(
     saveSettings(configDir, settings)
     return toAppSettings()
   })
+
+  // 저장된 멤버 목록 조회 — 회의 시작 모달과 설정 화면이 쓴다. 여기서는 동기화하지 않는다
+  // (모달이 즉시 떠야 하고, 참석자를 고르는 도중 목록이 흔들리면 안 된다).
+  ipcMain.handle('slack:membersState', (): SlackMembersState => ({
+    ...loadSlackMembers(configDir, fs.existsSync, (p) => fs.readFileSync(p, 'utf-8')),
+    error: null
+  }))
+
+  ipcMain.handle('slack:syncMembers', syncSlackMembers)
 
   // ── 회의록 공유(수동) ──────────────────────────────────────────────────
   // 저장 직후 자동 발송(notifySlackForMeeting)과 달리 사용자가 직접 누른 액션이므로 실패를

@@ -528,6 +528,60 @@ describe('defaultSlackChannelId', () => {
   })
 })
 
+describe('notifySlackForMeeting 멘션 대상 제한', () => {
+  const channel = '#회의록'
+
+  test('멘션 대상을 이 회의 참석자로 좁혀 buildBody에 넘긴다', () => {
+    const loadToken = vi.fn(() => 'xoxb-token')
+    const send = vi.fn()
+    const m = meeting({
+      participants: ['Ivy(김하나)'],
+      sections: actionsSection([{ text: 'API 확정', assignee: 'Ivy(김하나)' }])
+    })
+    const members: SlackMember[] = [
+      { id: 'U001', name: 'Ivy(김하나)' },
+      { id: 'U002', name: 'Max(이두리)' } // 참석자가 아니다
+    ]
+
+    notifySlackForMeeting(m, channel, loadToken, undefined, send, members)
+
+    const deps = send.mock.calls[0][3]
+    const body = deps.buildBody(m, channel)
+    expect(body.text).toContain('<@U001>')
+    expect(body.text).not.toContain('U002')
+  })
+
+  test('담당자가 참석자가 아니면 멘션하지 않는다', () => {
+    const loadToken = vi.fn(() => 'xoxb-token')
+    const send = vi.fn()
+    const m = meeting({
+      participants: ['Max(이두리)'],
+      sections: actionsSection([{ text: '보고', assignee: 'Ivy(김하나)' }])
+    })
+
+    notifySlackForMeeting(m, channel, loadToken, undefined, send, [
+      { id: 'U001', name: 'Ivy(김하나)' }
+    ])
+
+    const body = send.mock.calls[0][3].buildBody(m, channel)
+    expect(body.text).toContain('(담당: Ivy(김하나))')
+    expect(body.text).not.toContain('<@')
+  })
+
+  test('멤버를 넘기지 않으면 담당자가 모두 평문이다', () => {
+    const loadToken = vi.fn(() => 'xoxb-token')
+    const send = vi.fn()
+    const m = meeting({
+      participants: ['Ivy(김하나)'],
+      sections: actionsSection([{ text: 'API 확정', assignee: 'Ivy(김하나)' }])
+    })
+
+    notifySlackForMeeting(m, channel, loadToken, undefined, send)
+
+    expect(send.mock.calls[0][3].buildBody(m, channel).text).not.toContain('<@')
+  })
+})
+
 describe('listUsers', () => {
   test('봇·삭제 계정을 거른 멤버 목록을 반환한다', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(

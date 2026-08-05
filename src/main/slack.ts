@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
 import { meetingTypeDef } from '../shared/meeting-types'
-import { findMentionId, toSlackMembers, type SlackApiUser } from '../shared/slack-members'
+import { findMentionId, membersInMeeting, toSlackMembers, type SlackApiUser } from '../shared/slack-members'
 import type { ActionItem, Meeting, MeetingSection, SlackMember, SlackSendFailure } from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
@@ -255,11 +255,20 @@ export function notifySlackForMeeting(
   channelId: string | null | undefined,
   loadToken: () => string | null,
   notifyFailure?: (failure: SlackSendFailure) => void,
-  send: typeof sendSlackNotification = sendSlackNotification
+  send: typeof sendSlackNotification = sendSlackNotification,
+  members: SlackMember[] = []
 ): void {
   if (!channelId) return
   const token = loadToken()
-  if (token) send(meeting, token, channelId, { ...defaultDeps, notifyFailure })
+  if (!token) return
+  // 멘션 대상을 이 회의 참석자로 좁힌다 — 요약 모델이 회의에 없던 이름을 뽑아도 무관한
+  // 사람에게 알림이 가지 않는다.
+  const mentionable = membersInMeeting(meeting.participants, members)
+  send(meeting, token, channelId, {
+    ...defaultDeps,
+    notifyFailure,
+    buildBody: (m, c) => buildPostMessageBody(m, c, mentionable)
+  })
 }
 
 // 설정이 정하는 유효 기본 발송 채널 — 자동 발송(slackAutoSend)이 꺼져 있으면 기본 알림
