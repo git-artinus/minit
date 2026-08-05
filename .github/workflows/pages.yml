@@ -67,10 +67,46 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - run: npm ci
       - run: npm test
+      # 릴리즈 발행 이벤트는 목록 API 반영보다 먼저 온다(v0.14.0에서 실제로 겪음 — 발행
+      # 06:33:39Z, 빌드 시작 06:33에 목록이 아직 이전 릴리즈까지만 나와 changelog가 한 버전
+      # 뒤처진 채로 배포됐다). 빌드·배포는 성공으로 끝나 아무도 알아채지 못한다.
+      # 이벤트 페이로드의 태그가 목록 API에 나타날 때까지 기다렸다가 빌드한다.
+      - name: 릴리즈가 목록 API에 반영될 때까지 대기
+        if: github.event_name == 'release'
+        env:
+          # 워크플로 표현식을 run 안에 직접 보간하지 않는다(셸 주입 방지 관례).
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 30); do
+            if gh api "repos/$REPO/releases?per_page=100" \
+                 --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+               | grep -qx "$TAG"; then
+              echo "$TAG 반영 확인 (${i}회차)"
+              exit 0
+            fi
+            echo "$TAG 아직 목록에 없음 — 10초 후 재시도 ($i/30)"
+            sleep 10
+          done
+          echo "::error::$TAG 가 릴리즈 목록 API에 5분 내로 반영되지 않았다. 사이트를 옛 목록으로 굽지 않도록 중단한다."
+          exit 1
       - run: npm run build
         env:
           # 레이트리밋 60/h → 1000/h
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 위 대기를 통과해도 빌드가 읽는 API 응답이 캐시 노드에 따라 다를 수 있다. 실제 산출물에
+      # 해당 버전이 들어갔는지 확인해, 누락되면 조용히 배포하지 않고 실패시킨다.
+      - name: 산출물에 릴리즈 버전이 포함됐는지 확인
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if ! grep -qF "id=\"$TAG\"" dist/changelog/index.html; then
+            echo "::error::$TAG 가 changelog 산출물에 없다. 옛 목록으로 빌드된 것이므로 배포하지 않는다."
+            exit 1
+          fi
+          echo "$TAG 가 changelog 산출물에 포함됨"
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
