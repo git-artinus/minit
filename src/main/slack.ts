@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
 import { meetingTypeDef } from '../shared/meeting-types'
-import type { ActionItem, Meeting, MeetingSection, SlackSendFailure } from '../shared/types'
+import { findMentionId } from '../shared/slack-members'
+import type { ActionItem, Meeting, MeetingSection, SlackMember, SlackSendFailure } from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
   const d = new Date(dateIso)
@@ -15,21 +16,29 @@ export function escapeMrkdwn(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function actionItemLine(item: ActionItem): string {
+// 담당자가 Slack 멤버와 완전 일치하면 멘션(<@id>)으로 바꾼다. 멘션 토큰은 escapeMrkdwn을
+// 거치면 안 된다 — <,>가 &lt;,&gt;로 바뀌어 멘션이 깨진다. 그래서 이스케이프한 평문과
+// 멘션 토큰을 분기해서 조립한다.
+function assigneeText(assignee: string, members: SlackMember[]): string {
+  const id = findMentionId(assignee, members)
+  return id === null ? escapeMrkdwn(assignee) : `<@${id}>`
+}
+
+function actionItemLine(item: ActionItem, members: SlackMember[]): string {
   let line = `- [ ] ${escapeMrkdwn(item.text)}`
-  if (item.assignee) line += ` (담당: ${escapeMrkdwn(item.assignee)})`
+  if (item.assignee) line += ` (담당: ${assigneeText(item.assignee, members)})`
   if (item.due) line += ` (기한: ${escapeMrkdwn(item.due)})`
   return line
 }
 
 // 섹션 kind별 mrkdwn 렌더 — 빈 섹션은 통째로 생략한다(빈 헤딩만 남는 메시지 방지).
-function sectionLines(s: MeetingSection): string[] {
-  if (s.kind === 'actions') return s.items.length > 0 ? [`*${escapeMrkdwn(s.heading)}*`, ...s.items.map(actionItemLine)] : []
+function sectionLines(s: MeetingSection, members: SlackMember[]): string[] {
+  if (s.kind === 'actions') return s.items.length > 0 ? [`*${escapeMrkdwn(s.heading)}*`, ...s.items.map((i) => actionItemLine(i, members))] : []
   if (s.kind === 'list') return s.items.length > 0 ? [`*${escapeMrkdwn(s.heading)}*`, ...s.items.map((i) => `- ${escapeMrkdwn(i)}`)] : []
   return s.text.trim() !== '' ? [`*${escapeMrkdwn(s.heading)}*`, escapeMrkdwn(s.text)] : []
 }
 
-function buildMeetingText(meeting: Meeting): string {
+function buildMeetingText(meeting: Meeting, members: SlackMember[]): string {
   const participants =
     meeting.participants.length > 0 ? meeting.participants.map(escapeMrkdwn).join(', ') : '참석자 없음'
   const typeLabel = meetingTypeDef(meeting.meetingType).label
@@ -41,7 +50,7 @@ function buildMeetingText(meeting: Meeting): string {
   ]
 
   for (const s of meeting.sections) {
-    const rendered = sectionLines(s)
+    const rendered = sectionLines(s, members)
     if (rendered.length > 0) lines.push('', ...rendered)
   }
 
@@ -49,8 +58,13 @@ function buildMeetingText(meeting: Meeting): string {
 }
 
 // chat.postMessage 요청 body를 만드는 순수 함수. 부수효과(네트워크)는 postChatMessage가 담당한다.
-export function buildPostMessageBody(meeting: Meeting, channel: string): { channel: string; text: string } {
-  return { channel, text: buildMeetingText(meeting) }
+// members는 담당자 멘션 치환용이며, 비우면 기존처럼 전부 평문으로 나간다.
+export function buildPostMessageBody(
+  meeting: Meeting,
+  channel: string,
+  members: SlackMember[] = []
+): { channel: string; text: string } {
+  return { channel, text: buildMeetingText(meeting, members) }
 }
 
 // Slack Web API(chat.postMessage)에 POST한다. fetch를 주입받아 순수 로직과 분리된 TDD를 허용한다.

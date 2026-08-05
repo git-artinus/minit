@@ -9,7 +9,7 @@ import {
   resolveSlackChannelId,
   sendSlackNotification
 } from '../../src/main/slack'
-import type { ActionItem, Meeting } from '../../src/shared/types'
+import type { ActionItem, Meeting, SlackMember } from '../../src/shared/types'
 
 function meeting(over: Partial<Meeting> = {}): Meeting {
   return {
@@ -524,5 +524,58 @@ describe('defaultSlackChannelId', () => {
   test('자동 발송 꺼짐 + override 미지정이면 발송하지 않는다', () => {
     const fallback = defaultSlackChannelId({ slackChannelId: 'C_DEFAULT', slackAutoSend: false })
     expect(resolveSlackChannelId(undefined, fallback)).toBeNull()
+  })
+})
+
+describe('담당자 멘션', () => {
+  const members: SlackMember[] = [
+    { id: 'U001', name: 'Ivy(김하나)' },
+    { id: 'U002', name: 'Max(이두리)' }
+  ]
+
+  test('Slack 멤버와 완전 일치하는 담당자를 멘션으로 바꾼다', () => {
+    const m = meeting({ sections: actionsSection([{ text: 'API 확정', assignee: 'Ivy(김하나)' }]) })
+    const body = buildPostMessageBody(m, '#회의록', members)
+    expect(body.text).toContain('(담당: <@U001>)')
+  })
+
+  test('멤버에 없는 담당자는 평문으로 남긴다', () => {
+    const m = meeting({ sections: actionsSection([{ text: '검토', assignee: '외부 자문위원' }]) })
+    const body = buildPostMessageBody(m, '#회의록', members)
+    expect(body.text).toContain('(담당: 외부 자문위원)')
+    expect(body.text).not.toContain('<@')
+  })
+
+  test('멤버 목록을 넘기지 않으면 모두 평문이다(기존 동작 유지)', () => {
+    const m = meeting({ sections: actionsSection([{ text: 'API 확정', assignee: 'Ivy(김하나)' }]) })
+    expect(buildPostMessageBody(m, '#회의록').text).toContain('(담당: Ivy(김하나))')
+  })
+
+  test('멘션 토큰이 mrkdwn 이스케이프에 깨지지 않는다', () => {
+    const m = meeting({ sections: actionsSection([{ text: 'API 확정', assignee: 'Ivy(김하나)' }]) })
+    const body = buildPostMessageBody(m, '#회의록', members)
+    expect(body.text).not.toContain('&lt;@')
+    expect(body.text).toMatch(/<@U001>/)
+  })
+
+  test('담당자 이름에 특수문자가 있어도 평문 폴백은 이스케이프된다', () => {
+    const m = meeting({ sections: actionsSection([{ text: '검토', assignee: 'R&D <팀>' }]) })
+    const body = buildPostMessageBody(m, '#회의록', members)
+    expect(body.text).toContain('(담당: R&amp;D &lt;팀&gt;)')
+  })
+
+  test('기한은 멘션 여부와 무관하게 그대로 붙는다', () => {
+    const m = meeting({
+      sections: actionsSection([{ text: 'API 확정', assignee: 'Ivy(김하나)', due: '8/10' }])
+    })
+    const body = buildPostMessageBody(m, '#회의록', members)
+    expect(body.text).toContain('(담당: <@U001>) (기한: 8/10)')
+  })
+
+  test('참석자 목록은 멘션하지 않는다', () => {
+    const m = meeting({ participants: ['Ivy(김하나)'], sections: [] })
+    const body = buildPostMessageBody(m, '#회의록', members)
+    expect(body.text).toContain('Ivy(김하나)')
+    expect(body.text).not.toContain('<@U001>')
   })
 })
