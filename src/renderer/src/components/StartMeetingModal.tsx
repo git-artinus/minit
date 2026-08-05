@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
-import type { MeetingMeta, Roster, SlackChannel, AppSettings, SlackTokenState } from '../../../shared/types'
+import type {
+  MeetingMeta,
+  Roster,
+  SlackChannel,
+  AppSettings,
+  SlackMember,
+  SlackTokenState
+} from '../../../shared/types'
 import { defaultMeetingTitle, localIsoNow } from '../../../shared/meeting-file'
 import { resolveMemberName } from '../../../shared/roster'
+import { splitParticipants, visibleGuests } from '../../../shared/slack-members'
 import { DEFAULT_MEETING_TYPE, MEETING_TYPES } from '../../../shared/meeting-types'
 import { SlackChannelSelect } from './SlackChannelSelect'
 import {
@@ -35,12 +43,21 @@ export function StartMeetingModal(props: {
   })
   const [slackTokenSaved, setSlackTokenSaved] = useState(false)
   const [slackChannels, setSlackChannels] = useState<SlackChannel[] | null>(null)
+  // 저장된 목록만 읽는다 — 여기서 동기화하면 모달이 늦게 뜨고 고르는 도중 목록이 흔들린다.
+  const [slackMembers, setSlackMembers] = useState<SlackMember[]>([])
 
   useEffect(() => {
     window.minuting
       .getRoster()
       .then((r) => setRoster(r as Roster | null))
       .catch(() => setRoster(null))
+  }, [])
+
+  useEffect(() => {
+    window.minuting
+      .getSlackMembers()
+      .then((s) => setSlackMembers(s.members))
+      .catch(() => setSlackMembers([]))
   }, [])
 
   useEffect(() => {
@@ -137,7 +154,9 @@ export function StartMeetingModal(props: {
     })
     // 자동 등록(v0.4.0 ③a) — 로스터에 없는 이름을 등록한다. 실패해도 회의 시작 자체는
     // 이미 onStart로 진행되었으므로 격리한다(회귀 없이 조용히 무시).
-    window.minuting.addRosterParticipants(finalParticipants).catch(() => {})
+    // Slack 사용자는 제외한다 — 넣으면 게스트 목록에 같은 사람이 쌓여 중복이 재생산된다.
+    const { guests } = splitParticipants(finalParticipants, slackMembers)
+    window.minuting.addRosterParticipants(guests).catch(() => {})
   }
 
   // 게스트/참석자 태그 입력 — 로스터 있음/없음 두 코드패스에서 동일하게 재사용
@@ -203,24 +222,43 @@ export function StartMeetingModal(props: {
             ))}
           </select>
         </div>
-        {hasRoster ? (
+        {hasRoster || slackMembers.length > 0 ? (
           <>
-            <div className="chip-group">
-              <div className="chip-group-body">
-                {roster!.participants.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    className={`chip${selected.has(name) ? ' selected' : ''}`}
-                    onClick={() => toggle(name)}
-                  >
-                    {name}
-                  </button>
-                ))}
+            {slackMembers.length > 0 && (
+              <div className="chip-group">
+                <div className="chip-group-label">Slack</div>
+                <div className="chip-group-body">
+                  {slackMembers.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`chip${selected.has(m.name) ? ' selected' : ''}`}
+                      onClick={() => toggle(m.name)}
+                    >
+                      <span aria-hidden="true">🔹 </span>
+                      {m.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="chip-group">
               <div className="chip-group-label">게스트</div>
+              {hasRoster && (
+                <div className="chip-group-body">
+                  {/* Slack 표시이름과 겹치는 항목은 숨긴다 — 같은 사람이 두 번 뜨지 않게. */}
+                  {visibleGuests(roster!.participants, slackMembers).map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`chip${selected.has(name) ? ' selected' : ''}`}
+                      onClick={() => toggle(name)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
               {tagInput}
             </div>
           </>
