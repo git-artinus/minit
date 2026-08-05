@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collectParticipants, queryMeetings, type MeetingFilter, type SortKey } from '../../../shared/meeting-query'
+import { collectParticipants, participantRecency, queryMeetings, type MeetingFilter, type SortKey } from '../../../shared/meeting-query'
 import { formatStartTime } from '../../../shared/meeting-file'
 import type { PipelineStage, PipelineStatus, Roster } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
@@ -34,6 +34,8 @@ export function Sidebar({
 
   const visible = useMemo(() => queryMeetings(meetings, filter, sortKey, dir), [meetings, filter, sortKey, dir])
   const participants = useMemo(() => collectParticipants(meetings), [meetings])
+  // 회의 시작 화면의 참석자 정렬 근거 — 최근 함께한 사람이 앞에 오게 한다.
+  const recency = useMemo(() => participantRecency(meetings), [meetings])
   // 필터 드롭다운 목록 — 개인 로스터(있으면)와 실제 회의록 참석자(수동 입력·게스트 포함)를
   // 합쳐 단일 목록으로 보여준다(팀 optgroup 구조는 폐기, v0.4.0 ③a).
   const filterNames = useMemo(() => {
@@ -189,6 +191,7 @@ export function Sidebar({
       {modalOpen && (
         <StartMeetingModal
           knownParticipants={participants}
+          recency={recency}
           onClose={() => setModalOpen(false)}
           onStart={(meta) => {
             setModalOpen(false)

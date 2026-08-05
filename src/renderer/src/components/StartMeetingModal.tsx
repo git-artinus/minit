@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type {
   MeetingMeta,
   Roster,
@@ -10,6 +10,7 @@ import type {
 import { defaultMeetingTitle, localIsoNow } from '../../../shared/meeting-file'
 import { resolveMemberName } from '../../../shared/roster'
 import { collapseMembers, splitParticipants, visibleGuests } from '../../../shared/slack-members'
+import { sortByRecency } from '../../../shared/meeting-query'
 import { DEFAULT_MEETING_TYPE, MEETING_TYPES } from '../../../shared/meeting-types'
 import { SlackChannelSelect } from './SlackChannelSelect'
 import {
@@ -26,6 +27,8 @@ const SLACK_CHIPS_COLLAPSED = 8
 
 export function StartMeetingModal(props: {
   knownParticipants: string[]
+  // 최근 함께한 참석자 가중치(이름 → 최근 회의 중 동석 횟수). 회의록에서 계산해 Sidebar가 넘긴다.
+  recency: Map<string, number>
   onStart: (meta: MeetingMeta) => void
   onClose: () => void
 }): React.JSX.Element {
@@ -103,7 +106,17 @@ export function StartMeetingModal(props: {
   const hasRoster = !!roster && roster.participants.length > 0
   // 렌더에서는 미로드(null)를 빈 목록과 같이 취급해도 안전하다 — 칩이 안 뜰 뿐이다.
   // 구분이 필요한 곳은 start()의 로스터 자동 등록뿐이다.
-  const slackChips = slackMembers ?? []
+  // 최근 함께한 사람이 앞에 오도록 정렬한다 — 목록을 접어서 일부만 보여주므로, 자주 만나는
+  // 사람이 접힘 뒤에 숨지 않아야 한다.
+  const slackChips = useMemo(
+    () => sortByRecency(slackMembers ?? [], (m) => m.name, props.recency),
+    [slackMembers, props.recency]
+  )
+  const guestChips = useMemo(
+    () =>
+      sortByRecency(visibleGuests(roster?.participants ?? [], slackChips), (n) => n, props.recency),
+    [roster, slackChips, props.recency]
+  )
   const shownSlackChips = slackExpanded
     ? slackChips
     : collapseMembers(slackChips, selected, SLACK_CHIPS_COLLAPSED)
@@ -307,7 +320,7 @@ export function StartMeetingModal(props: {
                   <div className="chip-group-label">게스트</div>
                   {hasRoster && (
                     <div className="chip-group-body">
-                      {visibleGuests(roster!.participants, slackChips).map((name) => (
+                      {guestChips.map((name) => (
                         <button
                           key={name}
                           type="button"
