@@ -21,9 +21,9 @@ import {
   defaultChannelOptionLabel
 } from './start-meeting-channel'
 
-// 접힌 상태에서 보여줄 Slack 참석자 수. 워크스페이스가 수십 명이면 목록만으로 모달이 스크롤돼
-// 아래 항목과 CTA가 묻힌다. 두 줄 남짓으로 유지하고 나머지는 더보기로 연다.
-const SLACK_CHIPS_COLLAPSED = 8
+// 회의 이력이 하나도 없을 때(최초 사용) 접힌 목록에 보여줄 인원. 이력이 쌓이면 이 값 대신
+// "참석한 적 있는 사람"이 기준이 된다(collapseMembers 참조).
+const SLACK_CHIPS_FALLBACK = 10
 
 export function StartMeetingModal(props: {
   knownParticipants: string[]
@@ -117,9 +117,12 @@ export function StartMeetingModal(props: {
       sortByRecency(visibleGuests(roster?.participants ?? [], slackChips), (n) => n, props.recency),
     [roster, slackChips, props.recency]
   )
-  const shownSlackChips = slackExpanded
-    ? slackChips
-    : collapseMembers(slackChips, selected, SLACK_CHIPS_COLLAPSED)
+  // 회의록에 기록된 적 있는 이름 — 참석 이력 판별 기준이다(Sidebar가 collectParticipants로 넘긴다).
+  const known = useMemo(() => new Set(props.knownParticipants), [props.knownParticipants])
+  const collapsedSlackChips = collapseMembers(slackChips, selected, known, SLACK_CHIPS_FALLBACK)
+  const shownSlackChips = slackExpanded ? slackChips : collapsedSlackChips
+  // 접었을 때 가려지는 인원 — 펼친 상태에서도 "접기" 버튼 노출 조건으로 쓴다.
+  const collapsedSlackCount = slackChips.length - collapsedSlackChips.length
   const hiddenSlackCount = slackChips.length - shownSlackChips.length
 
   const toggle = (name: string): void => {
@@ -283,7 +286,7 @@ export function StartMeetingModal(props: {
               <>
                 {slackChips.length > 0 && (
                   <div className="chip-group">
-                    <div className="chip-group-label">Slack</div>
+                    <div className="chip-group-label">Slack에서 가져온 멤버</div>
                     <div className="chip-group-body">
                       {shownSlackChips.map((m) => (
                         <button
@@ -304,7 +307,7 @@ export function StartMeetingModal(props: {
                           +{hiddenSlackCount}명 더보기
                         </button>
                       )}
-                      {slackExpanded && slackChips.length > SLACK_CHIPS_COLLAPSED && (
+                      {slackExpanded && collapsedSlackCount > 0 && (
                         <button
                           type="button"
                           className="chip-more"
@@ -317,7 +320,7 @@ export function StartMeetingModal(props: {
                   </div>
                 )}
                 <div className="chip-group">
-                  <div className="chip-group-label">게스트</div>
+                  <div className="chip-group-label">직접 추가한 게스트</div>
                   {hasRoster && (
                     <div className="chip-group-body">
                       {guestChips.map((name) => (

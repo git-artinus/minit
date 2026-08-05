@@ -121,18 +121,22 @@ export function splitParticipants(
   }
 }
 
-// 접힌 목록에 보여줄 멤버를 고른다. 앞에서부터 limit명을 취하되, 잘린 구간에 이미 선택된
-// 사람이 있으면 함께 남긴다 — 고른 참석자가 접힘 뒤로 숨으면 무엇을 선택했는지 확인할 수 없다.
+// 접힌 목록에 보여줄 멤버를 고른다. 기준은 개수가 아니라 **회의 이력**이다 — 한 번이라도 회의에
+// 참석한 적 있는 사람은 다시 고를 가능성이 높으니 바로 보이고, 그런 적 없는 사람만 더보기로
+// 접는다. 워크스페이스가 커도 실제로 쓰는 이름만 앞에 남는다.
+//
+// 이력이 전혀 없으면(최초 사용) 판단 근거가 없으므로 앞에서 fallbackLimit명을 보여준다.
+// 선택된 사람은 이력과 무관하게 항상 남긴다 — 고른 참석자가 접힘 뒤로 숨으면 확인할 수 없다.
 // 정렬 순서는 유지한다(선택된 것을 앞으로 끌어올리면 누를 때마다 목록이 뒤바뀐다).
 export function collapseMembers(
   members: SlackMember[],
   selected: ReadonlySet<string>,
-  limit: number
+  known: ReadonlySet<string>,
+  fallbackLimit: number
 ): SlackMember[] {
-  if (members.length <= limit) return members
-  const head = members.slice(0, limit)
-  const selectedBeyond = members.slice(limit).filter((m) => selected.has(m.name))
-  return [...head, ...selectedBeyond]
+  const withHistory = members.filter((m) => known.has(m.name) || selected.has(m.name))
+  if (withHistory.length > 0) return withHistory
+  return members.slice(0, fallbackLimit)
 }
 
 // 완전 일치할 때만 멘션한다(부분·대소문자 무시 매칭 금지). 표시이름이 중복되면 누구인지
