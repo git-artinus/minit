@@ -35,7 +35,9 @@ export function toSlackMembers(raw: SlackApiUser[]): SlackMember[] {
     if (name === null) continue
     out.push({ id: u.id, name })
   }
-  return out
+  // 이름순 정렬 — users.list 반환 순서는 의미가 없고 호출마다 달라질 수 있다. 목록을 접어서
+  // 일부만 보여주므로 순서가 안정적이어야 하고, 로스터(dedupeAndSort)와도 기준을 맞춘다.
+  return out.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
 }
 
 const SYNC_ERROR_REASONS: SlackSyncErrorReason[] = ['no_token', 'missing_scope', 'auth', 'network', 'unknown']
@@ -117,6 +119,20 @@ export function splitParticipants(
     slack: selected.filter((n) => slackNames.has(n)),
     guests: selected.filter((n) => !slackNames.has(n))
   }
+}
+
+// 접힌 목록에 보여줄 멤버를 고른다. 앞에서부터 limit명을 취하되, 잘린 구간에 이미 선택된
+// 사람이 있으면 함께 남긴다 — 고른 참석자가 접힘 뒤로 숨으면 무엇을 선택했는지 확인할 수 없다.
+// 정렬 순서는 유지한다(선택된 것을 앞으로 끌어올리면 누를 때마다 목록이 뒤바뀐다).
+export function collapseMembers(
+  members: SlackMember[],
+  selected: ReadonlySet<string>,
+  limit: number
+): SlackMember[] {
+  if (members.length <= limit) return members
+  const head = members.slice(0, limit)
+  const selectedBeyond = members.slice(limit).filter((m) => selected.has(m.name))
+  return [...head, ...selectedBeyond]
 }
 
 // 완전 일치할 때만 멘션한다(부분·대소문자 무시 매칭 금지). 표시이름이 중복되면 누구인지

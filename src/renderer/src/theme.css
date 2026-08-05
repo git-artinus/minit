@@ -256,6 +256,28 @@ body {
 }
 .github-waiting { display: flex; align-items: center; gap: var(--sp-2); }
 
+/* 회의 시작 모달 섹션 — 회의 정보/참여자/자동화를 나눈다. Slack 참석자가 들어오면서 항목이
+   늘어 한 덩어리로는 스캔이 안 됐다. 구분선으로 묶어 각 그룹이 무엇에 대한 설정인지 보이게 한다. */
+.modal-section { display: flex; flex-direction: column; gap: var(--sp-3); }
+.modal-section + .modal-section {
+  border-top: 1px solid var(--color-border); padding-top: var(--sp-4); margin-top: var(--sp-1);
+}
+.modal-section-title { font-size: var(--fs-sm); font-weight: 700; color: var(--color-text); }
+
+/* 접힌 목록의 더보기 — 칩과 같은 행에 서지만 선택 대상이 아니라 텍스트 버튼으로 구분한다. */
+.chip-more {
+  border: none; background: none; padding: var(--sp-1) var(--sp-2); cursor: pointer;
+  font-size: var(--fs-sm); color: var(--color-primary-strong); font-weight: 600;
+}
+.chip-more:hover { text-decoration: underline; }
+.chip-more:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); border-radius: var(--radius); }
+
+/* 모달이 80vh를 넘겨 스크롤될 때 1차 CTA가 스크롤 영역 안으로 밀려 들어가지 않게 고정한다. */
+.modal-cta-sticky {
+  position: sticky; bottom: calc(var(--sp-5) * -1); z-index: 1;
+  background: var(--color-surface); padding-bottom: var(--sp-1); margin-top: var(--sp-1);
+}
+
 /* 팀 칩(StartMeetingModal) */
 .chip-group { display: flex; flex-direction: column; gap: var(--sp-2); }
 .chip-group-label {
