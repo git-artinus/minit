@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { formatStartTime, formatTimestamp } from '../../../shared/meeting-file'
+import { formatStartTime, formatTimestamp, summaryParagraphs } from '../../../shared/meeting-file'
 import { mergeParagraphs } from '../../../shared/transcript'
 import { meetingTypeDef } from '../../../shared/meeting-types'
 import type { MeetingSection, SummaryFailure } from '../../../shared/types'
@@ -150,7 +150,7 @@ export function MeetingDetail(): React.JSX.Element {
       <section>
         <h2>요약</h2>
         {meeting.summary
-          ? <p>{meeting.summary}</p>
+          ? summaryParagraphs(meeting.summary).map((para, i) => <p key={i}>{para}</p>)
           : (
             <>
               <p className="muted">

@@ -9,31 +9,39 @@ export type RunWithStdin = (
 
 export function buildPrompt(typeDef: MeetingTypeDef, title: string, participants: string[]): string {
   const sectionKeys = typeDef.sectionDefs.map((d) => `"${d.heading}"`).join(', ')
-  const sectionsSchema =
-    typeDef.sectionDefs.length > 0
-      ? `"sections": {${typeDef.sectionDefs
-          .map((d) =>
-            d.kind === 'actions'
-              ? `"${d.heading}": [{"text": "할 일", "assignee": "담당자(언급된 경우만)", "due": "기한(언급된 경우만)"}]`
-              : d.kind === 'list'
-                ? `"${d.heading}": ["항목", "..."]`
-                : `"${d.heading}": "서술"`
-          )
-          .join(', ')}}`
-      : `"sections": {}`
+  const hasSections = typeDef.sectionDefs.length > 0
+  const sectionsSchema = hasSections
+    ? `"sections": {${typeDef.sectionDefs
+        .map((d) =>
+          d.kind === 'actions'
+            ? `"${d.heading}": [{"text": "할 일", "assignee": "담당자(언급된 경우만)", "due": "기한(언급된 경우만)"}]`
+            : d.kind === 'list'
+              ? `"${d.heading}": ["항목", "..."]`
+              : `"${d.heading}": "서술"`
+        )
+        .join(', ')}}`
+    : `"sections": {}`
   const roster =
     participants.length > 0
       ? `참석자 명단: ${participants.join(', ')}. 트랜스크립트는 음성 인식 결과라 사람 이름이 오인식됐을 수 있다. 명백히 오인식된 이름만 이 명단의 표기로 교정하고, 불확실하면 원문을 유지하라. 명단에 없는 이름을 지어내지 마라.`
       : ''
+  // 개수는 폭주를 막는 앵커일 뿐 상한이 아니다. 상한 어법을 쓰면 코드로 자르지 않아도
+  // LLM이 스스로 중요한 항목을 버린다 — 실제 감축은 아래 병합·배제 규칙이 맡는다.
+  const itemBudget = hasSections
+    ? `분량 기준선: ${typeDef.sectionDefs
+        .map((d) => `${d.heading} ${d.typicalItems}개`)
+        .join(', ')} 안팎. 중요한 내용이 빠지느니 기준선을 넘기는 편이 낫다 — 다만 중요도가 낮은 항목으로 개수를 채우지 마라.`
+    : ''
   return [
     `다음은 "${title}" 회의의 타임라인 트랜스크립트다.`,
     typeDef.promptGuidance,
     roster,
     '아래 JSON 스키마로만 응답하라. 다른 텍스트를 붙이지 마라.',
-    `{"summary": "회의 핵심을 3~6문장의 한국어로 요약", ${sectionsSchema}}`,
-    typeDef.sectionDefs.length > 0
-      ? `sections의 키는 정확히 [${sectionKeys}]로 하라. 해당 내용이 없으면 빈 배열로 두라.`
-      : '',
+    `{"summary": "회의 핵심을 ${typeDef.summaryGuide} 분량의 한국어로 요약. 문단은 빈 줄로 구분한다", ${sectionsSchema}}`,
+    hasSections ? `sections의 키는 정확히 [${sectionKeys}]로 하라. 해당 내용이 없으면 빈 배열로 두라.` : '',
+    itemBudget,
+    hasSections ? '같은 주제를 다루는 항목은 하나로 합쳐라. 회의에서 스쳐 지나간 언급, 결론 없이 흐른 논의는 넣지 마라.' : '',
+    hasSections ? '항목 하나는 한 문장으로 쓰고 80자를 넘기지 마라. 요약에 이미 쓴 내용을 항목으로 반복하지 마라.' : '',
     '트랜스크립트에 없는 내용을 지어내지 마라.',
   ]
     .filter((l) => l !== '')

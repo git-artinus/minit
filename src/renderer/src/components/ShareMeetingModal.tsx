@@ -117,6 +117,11 @@ export function ShareMeetingModal(props: { meeting: Meeting; onClose: () => void
                 onChange={setChannelId}
                 leading={<option value="">채널 선택…</option>}
               />
+              {/* 설정의 발송 범위가 이 경로에도 걸린다. 사용자가 직접 누르는 액션이라 잘림을
+                  알려야 하는데, 설정 화면의 안내는 여기까지 도달하지 않는다. */}
+              <p className="share-option-desc">
+                설정의 발송 범위에 따라 요약만 보내거나 액션아이템까지 함께 보냅니다.
+              </p>
             </div>
           )}
 

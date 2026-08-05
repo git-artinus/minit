@@ -5,6 +5,7 @@ import type {
   GithubLoginState,
   SlackChannel,
   SlackMembersState,
+  SlackSendScope,
   SlackTokenState,
   UpdateCheckResult,
   UpdateProgress
@@ -12,7 +13,7 @@ import type {
 import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
 import { claudeStatusView } from '../state/claude-status-view'
 import { slackSyncErrorText } from '../state/slack-sync-error'
-import { releaseNotesUrl } from '../../../shared/release'
+import { changelogUrl, releasesPageUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { useSetup } from '../state/setup'
 import { GithubConnectFlow } from './GithubConnectFlow'
@@ -25,6 +26,13 @@ function errMessage(e: unknown): string {
 
 // 한두 번은 오프라인·일시 오류로 흔하다 — 반복될 때만 알린다(4시간 주기이므로 3회는 반나절 이상).
 const AUTO_CHECK_WARN_AFTER = 3
+
+// 요약은 어떤 범위에서도 항상 들어간다 — 가운데 라벨의 '+'가 그 사실을 드러낸다.
+const SLACK_SCOPE_OPTIONS: { value: SlackSendScope; label: string }[] = [
+  { value: 'summary', label: '요약만' },
+  { value: 'actions', label: '+ 액션아이템' },
+  { value: 'full', label: '전체 섹션' }
+]
 
 // 설치 가드 오류(리뷰 Fix Critical) — main의 update:download가 canInstallUpdate 결과로 던진
 // 오류 코드를 사용자 문구로 옮긴다. UpdateBanner와 동일한 매핑을 공유한다.
@@ -274,6 +282,16 @@ export function SettingsModal(props: {
       setSettings(updated)
     } catch (e) {
       setSlackError('자동 발송 설정을 저장하지 못했습니다: ' + errMessage(e))
+    }
+  }
+
+  const updateSlackSendScope = async (slackSendScope: SlackSendScope): Promise<void> => {
+    setSlackError(null)
+    try {
+      const updated = await window.minuting.updateSettings({ slackSendScope })
+      setSettings(updated)
+    } catch (e) {
+      setSlackError('발송 범위 설정을 저장하지 못했습니다: ' + errMessage(e))
     }
   }
 
@@ -617,6 +635,26 @@ export function SettingsModal(props: {
                 <div className="setting-desc">기본 알림 채널을 먼저 선택하면 켤 수 있습니다.</div>
               )}
 
+              <div className="setting-sublabel">발송 범위</div>
+              <div className="setting-desc">Slack 메시지에 어디까지 담을지 정합니다.</div>
+              {/* 자동 발송 토글과 달리 채널 미선택 시에도 끄지 않는다 — 이 설정은 공유 모달의
+                  수동 발송에도 적용되므로 채널 설정과 무관하게 의미가 있다. */}
+              <div className="segmented">
+                {SLACK_SCOPE_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={`segmented-item${settings?.slackSendScope === o.value ? ' active' : ''}`}
+                    onClick={() => updateSlackSendScope(o.value)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <div className="setting-desc">
+                아이디어·간이 회의는 액션아이템 섹션이 없어 &apos;+ 액션아이템&apos;도 요약만 발송됩니다.
+              </div>
+
               <div className="setting-sublabel">회의 참석자 동기화</div>
               <div className="setting-desc">
                 Slack 멤버를 회의 참석자 후보로 가져옵니다. 액션 아이템 담당자가 Slack 멤버와
@@ -728,10 +766,10 @@ export function SettingsModal(props: {
                   type="button"
                   className="link-btn"
                   onClick={() =>
-                    window.minuting.openExternal(releaseNotesUrl(updateResult.version)).catch(() => {})
+                    window.minuting.openExternal(changelogUrl(updateResult.version)).catch(() => {})
                   }
                 >
-                  릴리즈 노트
+                  변경 이력
                 </button>
                 <button type="button" className="btn-primary" onClick={startUpdateDownload}>
                   업데이트
@@ -769,7 +807,7 @@ export function SettingsModal(props: {
               <button
                 type="button"
                 className="link-btn"
-                onClick={() => window.minuting.openExternal(releaseNotesUrl()).catch(() => {})}
+                onClick={() => window.minuting.openExternal(releasesPageUrl()).catch(() => {})}
               >
                 릴리즈 페이지에서 직접 받기
               </button>

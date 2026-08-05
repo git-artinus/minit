@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { UpdateCheckResult, UpdateProgress } from '../../../shared/types'
-import { releaseNotesUrl } from '../../../shared/release'
+import { changelogUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
 import { shouldShowUpdateBanner, updateVersionKey } from '../state/update-banner'
 
@@ -78,11 +78,13 @@ export function UpdateBanner(): React.JSX.Element | null {
         // 사용자가 클릭하고 기다리는 동작이라 실패를 삼키지 않는다 — 대신 갈 곳을 알려준다.
         onClick={() =>
           window.minuting
-            .openExternal(releaseNotesUrl(available.version))
-            .catch(() => setError('브라우저를 열 수 없습니다. github.com/git-artinus/minit/releases 에서 확인하세요.'))
+            .openExternal(changelogUrl(available.version))
+            .catch(() =>
+              setError('브라우저를 열 수 없습니다. git-artinus.github.io/minit/changelog 에서 확인하세요.')
+            )
         }
       >
-        릴리즈 노트 보기
+        변경 이력 보기
       </button>
 
       {!downloading && (

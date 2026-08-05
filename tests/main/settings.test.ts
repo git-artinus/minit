@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { loadSettings, migrateLegacySettings, minitHome, saveSettings } from '../../src/main/settings'
+import { isSlackSendScope, loadSettings, migrateLegacySettings, minitHome, saveSettings } from '../../src/main/settings'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -17,6 +17,7 @@ describe('loadSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -32,6 +33,7 @@ describe('loadSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -64,6 +66,7 @@ describe('loadSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -93,6 +96,7 @@ describe('loadSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -114,6 +118,7 @@ describe('loadSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -163,6 +168,7 @@ describe('loadSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -567,6 +573,7 @@ describe('saveSettings', () => {
         slackPromptShown: true,
         // 채널이 있어도 명시적 false는 마이그레이션이 덮지 않는다(왕복 보존 확인).
         slackAutoSend: false,
+        slackSendScope: 'actions' as const,
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -594,6 +601,7 @@ describe('saveSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -609,6 +617,7 @@ describe('saveSettings', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -633,6 +642,7 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
         slackChannelName: null,
         slackPromptShown: false,
         slackAutoSend: false,
+        slackSendScope: 'actions',
         githubRepo: null,
         githubPromptShown: false,
         githubSync: false,
@@ -664,14 +674,14 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
     try {
       saveSettings(tempDir, {
         repoRoot: '/r', modelName: 'm', autoPush: true,
-        slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false,
+        slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false, slackSendScope: 'actions',
         githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
       })
       const raw = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))
       expect(Object.keys(raw).sort()).toEqual(
         [
           'repoRoot', 'modelName', 'autoPush', 'slackChannelId', 'slackChannelName',
-          'slackPromptShown', 'slackAutoSend', 'githubRepo', 'githubPromptShown', 'githubSync',
+          'slackPromptShown', 'slackAutoSend', 'slackSendScope', 'githubRepo', 'githubPromptShown', 'githubSync',
           'pendingUploads', 'pendingDeletes',
         ].sort()
       )
@@ -686,7 +696,7 @@ describe('saveSettings 필드 보존(리뷰 Fix 1)', () => {
       fs.writeFileSync(path.join(tempDir, 'settings.json'), '{broken')
       saveSettings(tempDir, {
         repoRoot: '/r', modelName: 'm', autoPush: true,
-        slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false,
+        slackChannelId: null, slackChannelName: null, slackPromptShown: false, slackAutoSend: false, slackSendScope: 'actions',
         githubRepo: null, githubPromptShown: false, githubSync: false, pendingUploads: [], pendingDeletes: [],
       })
       const raw = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf-8'))
@@ -774,5 +784,70 @@ describe('migrateLegacySettings', () => {
       fs.rmSync(legacyDir, { recursive: true, force: true })
       fs.rmSync(newDir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('slackSendScope', () => {
+  test('설정 파일이 없으면 기본값은 actions다', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      expect(loadSettings(tempDir, tempDir).slackSendScope).toBe('actions')
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  // 이 필드 도입 이전 설정에는 값이 없다. 이번 변경의 목적이 분량 축소이므로
+  // 설정을 건드리지 않아도 효과가 나타나야 한다 — 기존 동작(full) 보존을 택하지 않는다.
+  test('기존 설정 파일에 필드가 없으면 actions로 채운다', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify({ repoRoot: tempDir, slackAutoSend: false })
+      )
+      expect(loadSettings(tempDir, tempDir).slackSendScope).toBe('actions')
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  test('저장된 값이 유효하면 그대로 읽는다', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'settings.json'),
+        JSON.stringify({ repoRoot: tempDir, slackSendScope: 'full' })
+      )
+      expect(loadSettings(tempDir, tempDir).slackSendScope).toBe('full')
+    } finally {
+      fs.rmSync(tempDir, { recursive: true })
+    }
+  })
+
+  test('손상된 값은 기본값으로 되돌린다', () => {
+    for (const bad of [42, null, 'FULL', '', {}]) {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minuting-settings-'))
+      try {
+        fs.writeFileSync(
+          path.join(tempDir, 'settings.json'),
+          JSON.stringify({ repoRoot: tempDir, slackSendScope: bad })
+        )
+        expect(loadSettings(tempDir, tempDir).slackSendScope).toBe('actions')
+      } finally {
+        fs.rmSync(tempDir, { recursive: true })
+      }
+    }
+  })
+})
+
+describe('isSlackSendScope', () => {
+  test('세 값만 통과시킨다', () => {
+    expect(isSlackSendScope('summary')).toBe(true)
+    expect(isSlackSendScope('actions')).toBe(true)
+    expect(isSlackSendScope('full')).toBe(true)
+    expect(isSlackSendScope('none')).toBe(false)
+    expect(isSlackSendScope(0)).toBe(false)
+    expect(isSlackSendScope(undefined)).toBe(false)
   })
 })

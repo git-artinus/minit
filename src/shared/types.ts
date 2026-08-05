@@ -87,6 +87,7 @@ export interface AppSettings {
   // slackChannelId는 "기본 알림 채널" — 자동 발송 여부는 slackAutoSend가 별도로 정한다.
   slackChannelId: string | null; slackChannelName: string | null; slackPromptShown: boolean
   slackAutoSend: boolean
+  slackSendScope: SlackSendScope
   githubRepo: string | null; githubPromptShown: boolean
   // GitHub 자동 동기화(업로드·pull) 실행 여부(v0.4.0 ④) — 레포를 처음 선택하면 자동으로 켜진다.
   githubSync: boolean
@@ -95,6 +96,13 @@ export interface AppSettings {
   // 저장 위치(repoRoot)가 git 레포(.git 존재)인지 — "자동 업로드(Git Push)" 스위치 노출 조건(v0.4.0 ④).
   repoRootIsGitRepo: boolean
 }
+
+/**
+ * Slack 메시지에 담을 범위. 회의 타입으로 분기하지 않는다 — 'actions'는 섹션의
+ * kind === 'actions'만 남기므로, 타입이 늘어도 설정과 렌더가 그대로 따라온다.
+ * 아이디어·간이 타입은 actions 섹션이 없어 'actions'와 'summary'의 결과가 같다(의도된 동작).
+ */
+export type SlackSendScope = 'summary' | 'actions' | 'full'
 
 export interface SlackTokenState {
   saved: boolean

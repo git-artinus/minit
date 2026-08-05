@@ -1,7 +1,9 @@
 import { fetchWithTimeout } from '../shared/fetch-timeout'
 import { meetingTypeDef } from '../shared/meeting-types'
 import { findMentionId, membersInMeeting, toSlackMembers, type SlackApiUser } from '../shared/slack-members'
-import type { ActionItem, Meeting, MeetingSection, SlackMember, SlackSendFailure } from '../shared/types'
+import type {
+  ActionItem, Meeting, MeetingSection, SlackMember, SlackSendFailure, SlackSendScope,
+} from '../shared/types'
 
 function formatMeetingDate(dateIso: string): string {
   const d = new Date(dateIso)
@@ -38,7 +40,15 @@ function sectionLines(s: MeetingSection, members: SlackMember[]): string[] {
   return s.text.trim() !== '' ? [`*${escapeMrkdwn(s.heading)}*`, escapeMrkdwn(s.text)] : []
 }
 
-function buildMeetingText(meeting: Meeting, members: SlackMember[]): string {
+// 회의 타입으로 분기하지 않는다 — kind 하나로 결정하므로 타입이 늘어도 여기는 그대로다.
+// 각 타입은 actions 섹션을 0개 또는 1개만 가져 결과가 모호하지 않다.
+function scopedSections(sections: MeetingSection[], scope: SlackSendScope): MeetingSection[] {
+  if (scope === 'summary') return []
+  if (scope === 'actions') return sections.filter((s) => s.kind === 'actions')
+  return sections
+}
+
+function buildMeetingText(meeting: Meeting, scope: SlackSendScope, members: SlackMember[]): string {
   const participants =
     meeting.participants.length > 0 ? meeting.participants.map(escapeMrkdwn).join(', ') : '참석자 없음'
   const typeLabel = meetingTypeDef(meeting.meetingType).label
@@ -49,7 +59,7 @@ function buildMeetingText(meeting: Meeting, members: SlackMember[]): string {
     meeting.summary.trim() !== '' ? escapeMrkdwn(meeting.summary) : '전사만 저장됨'
   ]
 
-  for (const s of meeting.sections) {
+  for (const s of scopedSections(meeting.sections, scope)) {
     const rendered = sectionLines(s, members)
     if (rendered.length > 0) lines.push('', ...rendered)
   }
@@ -58,7 +68,7 @@ function buildMeetingText(meeting: Meeting, members: SlackMember[]): string {
 }
 
 // chat.postMessage 요청 body를 만드는 순수 함수. 부수효과(네트워크)는 postChatMessage가 담당한다.
-// members는 담당자 멘션 치환용이며, 비우면 기존처럼 전부 평문으로 나간다.
+// members는 담당자 멘션 치환용이며, 비우면 전부 평문으로 나간다.
 //
 // 참석자 스코핑을 여기서 한다 — 호출부(자동 발송·수동 공유)가 각자 좁히게 두면 한쪽이 빠져도
 // 타입 오류 없이 조용히 평문으로 나간다(실제로 그렇게 누락된 적이 있다). 워크스페이스 전체
@@ -66,9 +76,13 @@ function buildMeetingText(meeting: Meeting, members: SlackMember[]): string {
 export function buildPostMessageBody(
   meeting: Meeting,
   channel: string,
+  scope: SlackSendScope,
   members: SlackMember[] = []
 ): { channel: string; text: string } {
-  return { channel, text: buildMeetingText(meeting, membersInMeeting(meeting.participants, members)) }
+  return {
+    channel,
+    text: buildMeetingText(meeting, scope, membersInMeeting(meeting.participants, members)),
+  }
 }
 
 // Slack Web API(chat.postMessage)에 POST한다. fetch를 주입받아 순수 로직과 분리된 TDD를 허용한다.
@@ -226,6 +240,7 @@ export function sendSlackNotification(
   meeting: Meeting,
   token: string | null,
   channel: string | null,
+  scope: SlackSendScope,
   deps: SendSlackNotificationDeps = defaultDeps,
   members: SlackMember[] = []
 ): void {
@@ -240,7 +255,7 @@ export function sendSlackNotification(
   }
 
   try {
-    const body = deps.buildBody(meeting, channel, members)
+    const body = deps.buildBody(meeting, channel, scope, members)
     void deps.post(token, body, deps.fetchImpl).catch((e) => {
       const message = withInviteHint(e instanceof Error ? e.message : String(e))
       deps.log('[slack] 회의 요약 발송 실패:', message)
@@ -259,6 +274,7 @@ export function sendSlackNotification(
 export function notifySlackForMeeting(
   meeting: Meeting,
   channelId: string | null | undefined,
+  scope: SlackSendScope,
   loadToken: () => string | null,
   notifyFailure?: (failure: SlackSendFailure) => void,
   send: typeof sendSlackNotification = sendSlackNotification,
@@ -267,7 +283,7 @@ export function notifySlackForMeeting(
   if (!channelId) return
   const token = loadToken()
   // 워크스페이스 전체 목록을 그대로 넘긴다 — 참석자 스코핑은 buildPostMessageBody가 한다.
-  if (token) send(meeting, token, channelId, { ...defaultDeps, notifyFailure }, members)
+  if (token) send(meeting, token, channelId, scope, { ...defaultDeps, notifyFailure }, members)
 }
 
 // 설정이 정하는 유효 기본 발송 채널 — 자동 발송(slackAutoSend)이 꺼져 있으면 기본 알림
