@@ -1,6 +1,6 @@
 {
   "name": "minit",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Minit — 회의 녹음·전사·요약 회의록 도구. 로컬 whisper로 전사하고 Claude로 요약해 회의록을 자동 저장하는 Electron 앱",
   "main": "./out/main/index.js",
   "author": "Artinus",
