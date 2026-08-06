@@ -382,7 +382,7 @@ export function SettingsModal(props: {
 
   return (
     <div className="modal-backdrop" onClick={props.onClose}>
-      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal settings-modal modal-scrollable" onClick={(e) => e.stopPropagation()}>
         <header className="settings-header">
           <h2>설정</h2>
           <button type="button" className="icon-btn" onClick={props.onClose} aria-label="닫기">
@@ -391,428 +391,430 @@ export function SettingsModal(props: {
             </svg>
           </button>
         </header>
-        {error && <p className="setting-error">{error}</p>}
+        <div className="modal-body">
+          {error && <p className="setting-error">{error}</p>}
 
-        <div className="setting-row">
-          <div className="setting-label">Claude</div>
-          <div className="setting-desc">{CLAUDE_DEPENDENCY_NOTICE}</div>
-          <div className="setting-path-row">
-            {/* "연결됨"(GitHub 섹션의 어휘)을 쓰지 않는다 — 저쪽은 앱이 쥔 토큰 상태고 이쪽은
-                기기의 CLI가 지금 응답하는지다. 같은 말로 묶으면 서로 다른 것을 같게 읽는다.
-                재확인이 실패해도 직전 판정을 라벨로 유지한다. '확인 실패'로 덮으면 아래 조치
-                안내(직전 판정 기준)와 출처가 갈려 라벨은 모른다고, 본문은 안다고 말하게 된다. */}
-            <div className="setting-desc">
-              {claudeStatus !== null ? claudeStatus.label : claudeError !== null ? '확인 실패' : '확인 중…'}
+          <div className="setting-row">
+            <div className="setting-label">Claude</div>
+            <div className="setting-desc">{CLAUDE_DEPENDENCY_NOTICE}</div>
+            <div className="setting-path-row">
+              {/* "연결됨"(GitHub 섹션의 어휘)을 쓰지 않는다 — 저쪽은 앱이 쥔 토큰 상태고 이쪽은
+                  기기의 CLI가 지금 응답하는지다. 같은 말로 묶으면 서로 다른 것을 같게 읽는다.
+                  재확인이 실패해도 직전 판정을 라벨로 유지한다. '확인 실패'로 덮으면 아래 조치
+                  안내(직전 판정 기준)와 출처가 갈려 라벨은 모른다고, 본문은 안다고 말하게 된다. */}
+              <div className="setting-desc">
+                {claudeStatus !== null ? claudeStatus.label : claudeError !== null ? '확인 실패' : '확인 중…'}
+              </div>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  recheckClaude().catch(() => {})
+                }}
+                disabled={claudeChecking}
+              >
+                {claudeChecking ? '확인 중…' : '다시 확인'}
+              </button>
             </div>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => {
-                recheckClaude().catch(() => {})
-              }}
-              disabled={claudeChecking}
-            >
-              {claudeChecking ? '확인 중…' : '다시 확인'}
-            </button>
-          </div>
-          {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
-          {claudeError !== null && (
-            <p className="setting-error">
-              상태 확인 실패: {claudeError}
-              {claudeStatus !== null && ' (아래는 직전 확인 결과입니다)'}
-            </p>
-          )}
+            {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
+            {claudeError !== null && (
+              <p className="setting-error">
+                상태 확인 실패: {claudeError}
+                {claudeStatus !== null && ' (아래는 직전 확인 결과입니다)'}
+              </p>
+            )}
 
-          {claudeStatus !== null && claudeStatus.hint !== null && (
-            <div className="setting-desc">{claudeStatus.hint}</div>
-          )}
+            {claudeStatus !== null && claudeStatus.hint !== null && (
+              <div className="setting-desc">{claudeStatus.hint}</div>
+            )}
 
-          {claudeStatus?.showInstall && (
-            <>
-              <div className="setting-path-row">
-                <div className="setting-path" title={CLAUDE_INSTALL_COMMAND}>
-                  {CLAUDE_INSTALL_COMMAND}
+            {claudeStatus?.showInstall && (
+              <>
+                <div className="setting-path-row">
+                  <div className="setting-path" title={CLAUDE_INSTALL_COMMAND}>
+                    {CLAUDE_INSTALL_COMMAND}
+                  </div>
+                  <button type="button" className="btn-ghost" onClick={copyInstallCommand}>
+                    {installCopied ? '복사됨' : '복사'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
+                  >
+                    설치 문서
+                  </button>
                 </div>
-                <button type="button" className="btn-ghost" onClick={copyInstallCommand}>
-                  {installCopied ? '복사됨' : '복사'}
+                {copyError !== null && <p className="setting-error">{copyError}</p>}
+              </>
+            )}
+
+            {/* 사유를 특정하지 못한 경우에만 원문이 실려 온다. 이게 없으면 '확인 실패'가 무엇
+                때문인지 알 방법이 렌더러 어디에도 남지 않는다(패키징된 앱은 콘솔을 볼 수 없다). */}
+            {claudeStatus?.detail != null && <p className="setting-error">{claudeStatus.detail}</p>}
+          </div>
+
+          <div className="setting-row">
+            <div className="setting-label">테마</div>
+            <div className="setting-desc">화면 밝기를 선택합니다.</div>
+            <div className="segmented">
+              <button
+                type="button"
+                className={`segmented-item${props.theme === 'light' ? ' active' : ''}`}
+                onClick={() => props.onThemeChange('light')}
+              >
+                라이트
+              </button>
+              <button
+                type="button"
+                className={`segmented-item${props.theme === 'dark' ? ' active' : ''}`}
+                onClick={() => props.onThemeChange('dark')}
+              >
+                다크
+              </button>
+            </div>
+          </div>
+
+          {settings?.repoRootIsGitRepo && (
+            <div className="setting-row">
+              <div className="setting-label">자동 업로드 (Git Push)</div>
+              <div className="setting-desc">
+                끄면 회의록이 로컬에만 저장되고, 원격 저장소에 자동으로 올리지 않습니다.
+              </div>
+              <button
+                type="button"
+                className={`switch${settings?.autoPush ? ' on' : ''}`}
+                role="switch"
+                aria-checked={settings?.autoPush ?? false}
+                aria-label="자동 업로드"
+                onClick={() => updateAutoPush(!(settings?.autoPush ?? true))}
+              >
+                <span className="switch-knob" />
+              </button>
+            </div>
+          )}
+
+          <div className="setting-row">
+            <div className="setting-label">회의록 저장 위치</div>
+            <div className="setting-desc">회의록 파일이 저장·커밋되는 git 저장소 경로입니다.</div>
+            <div className="setting-path-row">
+              <div className="setting-path" title={settings?.repoRoot}>
+                {settings?.repoRoot ?? '불러오는 중…'}
+              </div>
+              <button type="button" className="btn-ghost" onClick={pickRepoRoot}>
+                폴더 선택
+              </button>
+              {settings && settings.repoRoot !== settings.defaultRepoRoot && (
+                <button type="button" className="btn-ghost" onClick={resetRepoRootToDefault}>
+                  기본 위치로 재설정
                 </button>
+              )}
+            </div>
+          </div>
+
+          <RosterSection />
+
+          <div className="setting-row">
+            <div className="setting-label">연동 (Slack)</div>
+            <div className="setting-desc">
+              회의 요약을 보낼 기본 알림 채널을 지정합니다. 봇 토큰은 암호화해 보관하며 렌더러 화면에는 절대
+              평문으로 표시되지 않습니다.
+            </div>
+
+            {!slackTokenEditing && slackToken && !slackToken.saved && (
+              <>
+                <div className="setting-desc">① 워크스페이스 관리자에게 봇 토큰(xoxb-…)을 공유받습니다</div>
+                <div className="setting-desc">② 아래 [봇 토큰 입력]으로 붙여넣고 저장합니다</div>
+                <div className="setting-desc">③ 저장 후 나타나는 드롭다운에서 기본 알림 채널을 선택합니다</div>
+                <div className="setting-path-row">
+                  <button type="button" className="btn-ghost" onClick={() => setSlackTokenEditing(true)}>
+                    봇 토큰 입력
+                  </button>
+                </div>
+              </>
+            )}
+
+            {slackTokenEditing && (
+              <>
+                <input
+                  type="password"
+                  placeholder="xoxb-로 시작하는 토큰"
+                  value={slackTokenInput}
+                  onChange={(e) => setSlackTokenInput(e.target.value)}
+                />
+                <div className="setting-path-row">
+                  <button type="button" className="btn-primary" onClick={saveSlackToken}>
+                    저장
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      setSlackTokenEditing(false)
+                      setSlackTokenInput('')
+                      setSlackError(null)
+                    }}
+                  >
+                    취소
+                  </button>
+                </div>
+              </>
+            )}
+
+            {!slackTokenEditing && slackToken?.saved && (
+              <>
+                <div className="setting-path-row">
+                  <div className="setting-path">봇 토큰 등록됨 ●●●●●● (암호화 보관)</div>
+                  <button type="button" className="btn-ghost" onClick={() => setSlackTokenEditing(true)}>
+                    변경
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={clearSlackToken}>
+                    해제
+                  </button>
+                </div>
+
+                <div className="setting-sublabel">기본 알림 채널</div>
+                <div className="setting-desc">
+                  Minit 봇을 초대한 채널만 아래 목록에 나타납니다. 채널에서 [채널명 → 통합 → 앱 → Minit 추가]로
+                  초대하세요.
+                </div>
+                {slackChannels !== null && slackChannels.length === 0 ? (
+                  <div className="setting-desc">
+                    아직 Minit 봇이 추가된 채널이 없습니다. 위 안내대로 초대 후 새로고침하세요.
+                  </div>
+                ) : (
+                  <SlackChannelSelect
+                    channels={slackChannels}
+                    value={settings?.slackChannelId ?? ''}
+                    onFocus={loadSlackChannelOptions}
+                    onChange={(value) => {
+                      if (value === '') {
+                        clearSlackChannel()
+                        return
+                      }
+                      const channel = (slackChannels ?? []).find((c) => c.id === value)
+                      if (channel) selectSlackChannel(channel)
+                    }}
+                    leading={
+                      <>
+                        <option value="">(선택 안 함)</option>
+                        {slackChannels === null && settings?.slackChannelId && (
+                          <option value={settings.slackChannelId}>
+                            {settings.slackChannelName ? `# ${settings.slackChannelName}` : settings.slackChannelId}
+                          </option>
+                        )}
+                      </>
+                    }
+                  />
+                )}
+                <div className="setting-path-row">
+                  <button type="button" className="btn-ghost" onClick={loadSlackChannels} disabled={slackChannelsLoading}>
+                    {slackChannelsLoading ? '불러오는 중…' : '채널 목록 새로고침'}
+                  </button>
+                  <span className="setting-desc">
+                    기본 알림 채널: {settings?.slackChannelName ? `#${settings.slackChannelName}` : '선택 안 함'}
+                  </span>
+                </div>
+
+                <div className="setting-sublabel">회의 종료 후 자동 발송</div>
+                <div className="setting-desc">
+                  끄면 회의가 끝나도 자동으로 보내지 않습니다. 회의 시작 시 채널을 지정하거나, 회의록의 공유
+                  버튼으로 직접 보낼 수 있습니다.
+                </div>
                 <button
                   type="button"
-                  className="btn-ghost"
-                  onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
+                  className={`switch${settings?.slackAutoSend ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings?.slackAutoSend ?? false}
+                  aria-label="회의 종료 후 자동 발송"
+                  disabled={!settings?.slackChannelId}
+                  onClick={() => updateSlackAutoSend(!(settings?.slackAutoSend ?? false))}
                 >
-                  설치 문서
+                  <span className="switch-knob" />
+                </button>
+                {!settings?.slackChannelId && (
+                  <div className="setting-desc">기본 알림 채널을 먼저 선택하면 켤 수 있습니다.</div>
+                )}
+
+                <div className="setting-sublabel">발송 범위</div>
+                <div className="setting-desc">Slack 메시지에 어디까지 담을지 정합니다.</div>
+                {/* 자동 발송 토글과 달리 채널 미선택 시에도 끄지 않는다 — 이 설정은 공유 모달의
+                    수동 발송에도 적용되므로 채널 설정과 무관하게 의미가 있다. */}
+                <div className="segmented">
+                  {SLACK_SCOPE_OPTIONS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      className={`segmented-item${settings?.slackSendScope === o.value ? ' active' : ''}`}
+                      onClick={() => updateSlackSendScope(o.value)}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="setting-desc">
+                  아이디어·간이 회의는 액션아이템 섹션이 없어 &apos;+ 액션아이템&apos;도 요약만 발송됩니다.
+                </div>
+
+                <div className="setting-sublabel">회의 참석자 동기화</div>
+                <div className="setting-desc">
+                  Slack 멤버를 회의 참석자 후보로 가져옵니다. 액션 아이템 담당자가 Slack 멤버와
+                  일치하면 발송 시 멘션(@)으로 보냅니다.
+                </div>
+                <div className="setting-path-row">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => void syncSlackMembers()}
+                    disabled={slackMembersSyncing}
+                  >
+                    {slackMembersSyncing ? '동기화 중…' : '참석자 동기화'}
+                  </button>
+                  <span className="setting-desc">
+                    Slack 멤버 {slackMembers?.members.length ?? 0}명
+                    {slackMembers?.syncedAt
+                      ? ` · 마지막 동기화 ${new Date(slackMembers.syncedAt).toLocaleString('ko-KR')}`
+                      : ''}
+                  </span>
+                </div>
+                {slackMembers?.lastError && (
+                  <p className="setting-error">{slackSyncErrorText(slackMembers.lastError)}</p>
+                )}
+              </>
+            )}
+            {slackError && <p className="setting-error">{slackError}</p>}
+          </div>
+
+          <div className="setting-row">
+            <div className="setting-label">GitHub 계정</div>
+            <div className="setting-desc">
+              회의가 끝나면 선택한 저장소의 minit/ 폴더에 자동 업로드하고, 동료가 올린 회의록도 내려받아 함께
+              보여줍니다.
+            </div>
+            {githubConnecting ? (
+              <GithubConnectFlow onDone={finishGithubConnect} />
+            ) : github?.loggedIn ? (
+              <>
+                <div className="setting-desc">연결됨: @{github.login}</div>
+                <select
+                  value={github.repo ?? ''}
+                  onFocus={loadGithubRepoOptions}
+                  onChange={(e) => changeGithubRepo(e.target.value)}
+                >
+                  <option value="">저장소 선택 안 함</option>
+                  {(githubRepos ?? (github.repo ? [github.repo] : [])).map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <div className="setting-path-row">
+                  <button type="button" className="btn-ghost" onClick={logoutGithub}>
+                    로그아웃
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="setting-path-row">
+                <div className="setting-desc">미연결</div>
+                <button type="button" className="btn-ghost" onClick={() => setGithubConnecting(true)}>
+                  연결
                 </button>
               </div>
-              {copyError !== null && <p className="setting-error">{copyError}</p>}
-            </>
-          )}
-
-          {/* 사유를 특정하지 못한 경우에만 원문이 실려 온다. 이게 없으면 '확인 실패'가 무엇
-              때문인지 알 방법이 렌더러 어디에도 남지 않는다(패키징된 앱은 콘솔을 볼 수 없다). */}
-          {claudeStatus?.detail != null && <p className="setting-error">{claudeStatus.detail}</p>}
-        </div>
-
-        <div className="setting-row">
-          <div className="setting-label">테마</div>
-          <div className="setting-desc">화면 밝기를 선택합니다.</div>
-          <div className="segmented">
-            <button
-              type="button"
-              className={`segmented-item${props.theme === 'light' ? ' active' : ''}`}
-              onClick={() => props.onThemeChange('light')}
-            >
-              라이트
-            </button>
-            <button
-              type="button"
-              className={`segmented-item${props.theme === 'dark' ? ' active' : ''}`}
-              onClick={() => props.onThemeChange('dark')}
-            >
-              다크
-            </button>
+            )}
+            {githubError && <p className="setting-error">{githubError}</p>}
           </div>
-        </div>
 
-        {settings?.repoRootIsGitRepo && (
           <div className="setting-row">
-            <div className="setting-label">자동 업로드 (Git Push)</div>
+            <div className="setting-label">자동 동기화</div>
             <div className="setting-desc">
-              끄면 회의록이 로컬에만 저장되고, 원격 저장소에 자동으로 올리지 않습니다.
+              {githubSyncEnabled
+                ? '회의록을 자동으로 업로드하고, 원격 저장소의 새 회의록을 자동으로 받아옵니다.'
+                : 'GitHub에 로그인하고 저장소를 선택하면 켜집니다.'}
             </div>
             <button
               type="button"
-              className={`switch${settings?.autoPush ? ' on' : ''}`}
+              className={`switch${githubSyncEnabled && settings?.githubSync ? ' on' : ''}`}
               role="switch"
-              aria-checked={settings?.autoPush ?? false}
-              aria-label="자동 업로드"
-              onClick={() => updateAutoPush(!(settings?.autoPush ?? true))}
+              aria-checked={githubSyncEnabled && (settings?.githubSync ?? false)}
+              aria-label="자동 동기화"
+              disabled={!githubSyncEnabled}
+              onClick={() => updateGithubSync(!(settings?.githubSync ?? false))}
             >
               <span className="switch-knob" />
             </button>
           </div>
-        )}
 
-        <div className="setting-row">
-          <div className="setting-label">회의록 저장 위치</div>
-          <div className="setting-desc">회의록 파일이 저장·커밋되는 git 저장소 경로입니다.</div>
-          <div className="setting-path-row">
-            <div className="setting-path" title={settings?.repoRoot}>
-              {settings?.repoRoot ?? '불러오는 중…'}
-            </div>
-            <button type="button" className="btn-ghost" onClick={pickRepoRoot}>
-              폴더 선택
-            </button>
-            {settings && settings.repoRoot !== settings.defaultRepoRoot && (
-              <button type="button" className="btn-ghost" onClick={resetRepoRootToDefault}>
-                기본 위치로 재설정
-              </button>
-            )}
-          </div>
-        </div>
-
-        <RosterSection />
-
-        <div className="setting-row">
-          <div className="setting-label">연동 (Slack)</div>
-          <div className="setting-desc">
-            회의 요약을 보낼 기본 알림 채널을 지정합니다. 봇 토큰은 암호화해 보관하며 렌더러 화면에는 절대
-            평문으로 표시되지 않습니다.
-          </div>
-
-          {!slackTokenEditing && slackToken && !slackToken.saved && (
-            <>
-              <div className="setting-desc">① 워크스페이스 관리자에게 봇 토큰(xoxb-…)을 공유받습니다</div>
-              <div className="setting-desc">② 아래 [봇 토큰 입력]으로 붙여넣고 저장합니다</div>
-              <div className="setting-desc">③ 저장 후 나타나는 드롭다운에서 기본 알림 채널을 선택합니다</div>
-              <div className="setting-path-row">
-                <button type="button" className="btn-ghost" onClick={() => setSlackTokenEditing(true)}>
-                  봇 토큰 입력
-                </button>
-              </div>
-            </>
-          )}
-
-          {slackTokenEditing && (
-            <>
-              <input
-                type="password"
-                placeholder="xoxb-로 시작하는 토큰"
-                value={slackTokenInput}
-                onChange={(e) => setSlackTokenInput(e.target.value)}
-              />
-              <div className="setting-path-row">
-                <button type="button" className="btn-primary" onClick={saveSlackToken}>
-                  저장
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => {
-                    setSlackTokenEditing(false)
-                    setSlackTokenInput('')
-                    setSlackError(null)
-                  }}
-                >
-                  취소
-                </button>
-              </div>
-            </>
-          )}
-
-          {!slackTokenEditing && slackToken?.saved && (
-            <>
-              <div className="setting-path-row">
-                <div className="setting-path">봇 토큰 등록됨 ●●●●●● (암호화 보관)</div>
-                <button type="button" className="btn-ghost" onClick={() => setSlackTokenEditing(true)}>
-                  변경
-                </button>
-                <button type="button" className="btn-ghost" onClick={clearSlackToken}>
-                  해제
-                </button>
-              </div>
-
-              <div className="setting-sublabel">기본 알림 채널</div>
-              <div className="setting-desc">
-                Minit 봇을 초대한 채널만 아래 목록에 나타납니다. 채널에서 [채널명 → 통합 → 앱 → Minit 추가]로
-                초대하세요.
-              </div>
-              {slackChannels !== null && slackChannels.length === 0 ? (
-                <div className="setting-desc">
-                  아직 Minit 봇이 추가된 채널이 없습니다. 위 안내대로 초대 후 새로고침하세요.
-                </div>
-              ) : (
-                <SlackChannelSelect
-                  channels={slackChannels}
-                  value={settings?.slackChannelId ?? ''}
-                  onFocus={loadSlackChannelOptions}
-                  onChange={(value) => {
-                    if (value === '') {
-                      clearSlackChannel()
-                      return
-                    }
-                    const channel = (slackChannels ?? []).find((c) => c.id === value)
-                    if (channel) selectSlackChannel(channel)
-                  }}
-                  leading={
-                    <>
-                      <option value="">(선택 안 함)</option>
-                      {slackChannels === null && settings?.slackChannelId && (
-                        <option value={settings.slackChannelId}>
-                          {settings.slackChannelName ? `# ${settings.slackChannelName}` : settings.slackChannelId}
-                        </option>
-                      )}
-                    </>
-                  }
-                />
-              )}
-              <div className="setting-path-row">
-                <button type="button" className="btn-ghost" onClick={loadSlackChannels} disabled={slackChannelsLoading}>
-                  {slackChannelsLoading ? '불러오는 중…' : '채널 목록 새로고침'}
-                </button>
-                <span className="setting-desc">
-                  기본 알림 채널: {settings?.slackChannelName ? `#${settings.slackChannelName}` : '선택 안 함'}
-                </span>
-              </div>
-
-              <div className="setting-sublabel">회의 종료 후 자동 발송</div>
-              <div className="setting-desc">
-                끄면 회의가 끝나도 자동으로 보내지 않습니다. 회의 시작 시 채널을 지정하거나, 회의록의 공유
-                버튼으로 직접 보낼 수 있습니다.
-              </div>
+          <div className="setting-row">
+            <div className="setting-label">버전</div>
+            <div className="setting-desc">Minit v{version ?? '…'}</div>
+            <div className="setting-path-row">
               <button
                 type="button"
-                className={`switch${settings?.slackAutoSend ? ' on' : ''}`}
-                role="switch"
-                aria-checked={settings?.slackAutoSend ?? false}
-                aria-label="회의 종료 후 자동 발송"
-                disabled={!settings?.slackChannelId}
-                onClick={() => updateSlackAutoSend(!(settings?.slackAutoSend ?? false))}
+                className="btn-ghost"
+                onClick={checkForUpdate}
+                disabled={updateChecking || updateDownloading}
               >
-                <span className="switch-knob" />
+                {updateChecking ? '확인 중…' : '업데이트 확인'}
               </button>
-              {!settings?.slackChannelId && (
-                <div className="setting-desc">기본 알림 채널을 먼저 선택하면 켤 수 있습니다.</div>
+              {updateResult && !updateResult.available && !updateResult.error && (
+                <span className="setting-desc">최신 버전입니다</span>
               )}
-
-              <div className="setting-sublabel">발송 범위</div>
-              <div className="setting-desc">Slack 메시지에 어디까지 담을지 정합니다.</div>
-              {/* 자동 발송 토글과 달리 채널 미선택 시에도 끄지 않는다 — 이 설정은 공유 모달의
-                  수동 발송에도 적용되므로 채널 설정과 무관하게 의미가 있다. */}
-              <div className="segmented">
-                {SLACK_SCOPE_OPTIONS.map((o) => (
+              {updateResult?.available && !updateDownloading && (
+                <>
+                  <span className="setting-desc">새 버전 v{updateResult.version}</span>
                   <button
-                    key={o.value}
                     type="button"
-                    className={`segmented-item${settings?.slackSendScope === o.value ? ' active' : ''}`}
-                    onClick={() => updateSlackSendScope(o.value)}
+                    className="link-btn"
+                    onClick={() =>
+                      window.minuting.openExternal(changelogUrl(updateResult.version)).catch(() => {})
+                    }
                   >
-                    {o.label}
+                    변경 이력
                   </button>
-                ))}
-              </div>
-              <div className="setting-desc">
-                아이디어·간이 회의는 액션아이템 섹션이 없어 &apos;+ 액션아이템&apos;도 요약만 발송됩니다.
-              </div>
-
-              <div className="setting-sublabel">회의 참석자 동기화</div>
-              <div className="setting-desc">
-                Slack 멤버를 회의 참석자 후보로 가져옵니다. 액션 아이템 담당자가 Slack 멤버와
-                일치하면 발송 시 멘션(@)으로 보냅니다.
-              </div>
-              <div className="setting-path-row">
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => void syncSlackMembers()}
-                  disabled={slackMembersSyncing}
-                >
-                  {slackMembersSyncing ? '동기화 중…' : '참석자 동기화'}
-                </button>
-                <span className="setting-desc">
-                  Slack 멤버 {slackMembers?.members.length ?? 0}명
-                  {slackMembers?.syncedAt
-                    ? ` · 마지막 동기화 ${new Date(slackMembers.syncedAt).toLocaleString('ko-KR')}`
-                    : ''}
-                </span>
-              </div>
-              {slackMembers?.lastError && (
-                <p className="setting-error">{slackSyncErrorText(slackMembers.lastError)}</p>
+                  <button type="button" className="btn-primary" onClick={startUpdateDownload}>
+                    업데이트
+                  </button>
+                </>
               )}
-            </>
-          )}
-          {slackError && <p className="setting-error">{slackError}</p>}
-        </div>
-
-        <div className="setting-row">
-          <div className="setting-label">GitHub 계정</div>
-          <div className="setting-desc">
-            회의가 끝나면 선택한 저장소의 minit/ 폴더에 자동 업로드하고, 동료가 올린 회의록도 내려받아 함께
-            보여줍니다.
-          </div>
-          {githubConnecting ? (
-            <GithubConnectFlow onDone={finishGithubConnect} />
-          ) : github?.loggedIn ? (
-            <>
-              <div className="setting-desc">연결됨: @{github.login}</div>
-              <select
-                value={github.repo ?? ''}
-                onFocus={loadGithubRepoOptions}
-                onChange={(e) => changeGithubRepo(e.target.value)}
-              >
-                <option value="">저장소 선택 안 함</option>
-                {(githubRepos ?? (github.repo ? [github.repo] : [])).map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-              <div className="setting-path-row">
-                <button type="button" className="btn-ghost" onClick={logoutGithub}>
-                  로그아웃
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="setting-path-row">
-              <div className="setting-desc">미연결</div>
-              <button type="button" className="btn-ghost" onClick={() => setGithubConnecting(true)}>
-                연결
-              </button>
             </div>
-          )}
-          {githubError && <p className="setting-error">{githubError}</p>}
-        </div>
-
-        <div className="setting-row">
-          <div className="setting-label">자동 동기화</div>
-          <div className="setting-desc">
-            {githubSyncEnabled
-              ? '회의록을 자동으로 업로드하고, 원격 저장소의 새 회의록을 자동으로 받아옵니다.'
-              : 'GitHub에 로그인하고 저장소를 선택하면 켜집니다.'}
-          </div>
-          <button
-            type="button"
-            className={`switch${githubSyncEnabled && settings?.githubSync ? ' on' : ''}`}
-            role="switch"
-            aria-checked={githubSyncEnabled && (settings?.githubSync ?? false)}
-            aria-label="자동 동기화"
-            disabled={!githubSyncEnabled}
-            onClick={() => updateGithubSync(!(settings?.githubSync ?? false))}
-          >
-            <span className="switch-knob" />
-          </button>
-        </div>
-
-        <div className="setting-row">
-          <div className="setting-label">버전</div>
-          <div className="setting-desc">Minit v{version ?? '…'}</div>
-          <div className="setting-path-row">
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={checkForUpdate}
-              disabled={updateChecking || updateDownloading}
-            >
-              {updateChecking ? '확인 중…' : '업데이트 확인'}
-            </button>
-            {updateResult && !updateResult.available && !updateResult.error && (
-              <span className="setting-desc">최신 버전입니다</span>
-            )}
-            {updateResult?.available && !updateDownloading && (
+            {updateDownloading && !updateError && (
               <>
-                <span className="setting-desc">새 버전 v{updateResult.version}</span>
+                <div
+                  className="progress-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={updatePercent}
+                >
+                  <div className="progress-bar-fill" style={{ width: `${updatePercent}%` }} />
+                </div>
+                <p className="env-progress-label">다운로드 중… {updatePercent}% (완료되면 자동으로 재시작합니다)</p>
+              </>
+            )}
+            {updateResult?.error === 'feed_unreachable' && (
+              <p className="setting-desc">
+                업데이트 서버에 접근할 수 없습니다. 저장소가 비공개인 동안에는 자동 업데이트가 동작하지 않으며,
+                공개(public)로 전환되면 자동으로 활성화됩니다.
+              </p>
+            )}
+            {updateError && <p className="setting-error">{updateError}</p>}
+            {/* 자동 확인이 계속 실패하면 사용자는 구버전에 고립된 채 아무 신호도 못 받는다 —
+                이 앱의 유일한 배포 채널이 업데이터라 직접 받을 경로를 알려준다. */}
+            {autoCheckStatus !== null && autoCheckStatus.consecutiveFailures >= AUTO_CHECK_WARN_AFTER && (
+              <p className="setting-error">
+                자동 업데이트 확인이 {autoCheckStatus.consecutiveFailures}회 연속 실패했습니다
+                {autoCheckStatus.lastSuccessAt === 0 ? ' (이번 실행에서 성공한 적 없음)' : ''}.{' '}
                 <button
                   type="button"
                   className="link-btn"
-                  onClick={() =>
-                    window.minuting.openExternal(changelogUrl(updateResult.version)).catch(() => {})
-                  }
+                  onClick={() => window.minuting.openExternal(releasesPageUrl()).catch(() => {})}
                 >
-                  변경 이력
+                  릴리즈 페이지에서 직접 받기
                 </button>
-                <button type="button" className="btn-primary" onClick={startUpdateDownload}>
-                  업데이트
-                </button>
-              </>
+              </p>
             )}
           </div>
-          {updateDownloading && !updateError && (
-            <>
-              <div
-                className="progress-bar"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={updatePercent}
-              >
-                <div className="progress-bar-fill" style={{ width: `${updatePercent}%` }} />
-              </div>
-              <p className="env-progress-label">다운로드 중… {updatePercent}% (완료되면 자동으로 재시작합니다)</p>
-            </>
-          )}
-          {updateResult?.error === 'feed_unreachable' && (
-            <p className="setting-desc">
-              업데이트 서버에 접근할 수 없습니다. 저장소가 비공개인 동안에는 자동 업데이트가 동작하지 않으며,
-              공개(public)로 전환되면 자동으로 활성화됩니다.
-            </p>
-          )}
-          {updateError && <p className="setting-error">{updateError}</p>}
-          {/* 자동 확인이 계속 실패하면 사용자는 구버전에 고립된 채 아무 신호도 못 받는다 —
-              이 앱의 유일한 배포 채널이 업데이터라 직접 받을 경로를 알려준다. */}
-          {autoCheckStatus !== null && autoCheckStatus.consecutiveFailures >= AUTO_CHECK_WARN_AFTER && (
-            <p className="setting-error">
-              자동 업데이트 확인이 {autoCheckStatus.consecutiveFailures}회 연속 실패했습니다
-              {autoCheckStatus.lastSuccessAt === 0 ? ' (이번 실행에서 성공한 적 없음)' : ''}.{' '}
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => window.minuting.openExternal(releasesPageUrl()).catch(() => {})}
-              >
-                릴리즈 페이지에서 직접 받기
-              </button>
-            </p>
-          )}
         </div>
       </div>
     </div>
