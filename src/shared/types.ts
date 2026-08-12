@@ -68,6 +68,41 @@ export type ClaudeStatus =
   | { kind: 'unavailable'; failure: SummaryFailure }
   | { kind: 'undetermined'; failure: SummaryFailure }
 /**
+ * 인앱 Claude 로그인 결과. `claude auth login`은 브라우저 OAuth 동의를 거치므로 결과가
+ * 즉시 나오지 않는다 — invoke 반환값이 아니라 이벤트로 통지한다.
+ *
+ * incomplete는 실패가 아니라 "자식이 끝났는데 로그인은 안 됐다"는 사실이다(사용자가 브라우저
+ * 탭을 닫은 경우 등). 판정은 exit code가 아니라 auth status 재검증이 한다 — 탭을 닫아도
+ * CLI는 깔끔히 종료할 수 있어 종료 코드는 로그인 성공의 증거가 못 된다.
+ */
+export type ClaudeLoginEvent =
+  | { status: 'success' }
+  // detail은 CLI가 남긴 원문이다. 이 앱에는 파일 로거가 없어(pipeline/summary-error.ts 참고)
+  // 여기서 싣지 않으면 실패 사유를 사용자가 볼 방법이 없다.
+  | { status: 'incomplete'; detail?: string }
+  | { status: 'error'; message: string; detail?: string }
+/**
+ * 인앱 Claude CLI 설치 결과. 설치는 수십 초~수 분이 걸리고 출력이 계속 나오므로
+ * invoke 반환값이 아니라 출력 이벤트 + 완료 이벤트로 나눠 통지한다.
+ *
+ * ok=false의 detail은 사용자에게 보여줄 사유다. 전문은 ~/.minit/install-claude.log에 남는다 —
+ * 이 레포에 파일 로거가 없어 화면을 닫으면 원인이 사라지기 때문이다.
+ */
+export type ClaudeInstallDone = { ok: true } | { ok: false; detail: string }
+/**
+ * 로그인된 Claude 계정. 회사 계정과 개인 계정을 번갈아 쓰면 "로그인됨"만으로는 어느 쪽인지
+ * 알 수 없어, 설정 화면이 어느 계정인지 밝힌다.
+ *
+ * authMethod 말고는 모두 선택이다 — CLI가 무엇을 실어 보내는지는 계정 종류·버전에 따라
+ * 다르고, 부가 정보가 없다고 로그인 사실을 버릴 수는 없다.
+ */
+export interface ClaudeAccount {
+  authMethod: string
+  email?: string
+  orgName?: string
+  subscriptionType?: string
+}
+/**
  * 요약 재생성 결과. 예상된 실패(claude)는 예외가 아니라 반환값으로 표현한다 —
  * ipcMain.handle이 예외를 renderer로 넘길 때 message만 남기고 커스텀 프로퍼티를 잃기 때문이다.
  * 파일 IO 오류는 계속 throw한다(예상 밖 예외와 섞지 않는다).

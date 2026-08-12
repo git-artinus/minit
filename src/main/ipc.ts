@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -20,8 +20,12 @@ import { runPipeline } from './pipeline/pipeline'
 import { transcribeAndRepair } from './pipeline/transcriber'
 import { summarize } from './pipeline/summarizer'
 import { deleteMeeting, isGitRepo, loadMeetings, pushPending, saveMeeting, systemGit } from './pipeline/storage'
-import { runWithStdin } from './pipeline/claude-run'
-import { classifyClaudeFailure } from './pipeline/summary-error'
+import { claudeWorkdir, runWithStdin } from './pipeline/claude-run'
+import { classifyClaudeFailure, truncateDetail } from './pipeline/summary-error'
+import { checkAuthStatus } from './claude-auth'
+import { createClaudeInstaller, fileInstallLog, nodeSpawnInstall } from './claude-install'
+import { createClaudeLoginSession, LOGIN_ARGS } from './claude-login'
+import { claudeInstallShell } from '../shared/claude-cli'
 import { availabilityEvidence, createClaudeStatusChecker, probeClaude } from './claude-status'
 import { regenerateSummary } from './pipeline/regenerate'
 import {
@@ -207,6 +211,138 @@ export function registerIpc(
       if (!win.isDestroyed()) win.webContents.send('claude:status-changed', status)
     })
   ipcMain.handle('claude:status', (_e, force: boolean) => claudeStatus.get(force === true))
+
+  // 인앱 로그인 — `claude auth login`은 루프백 콜백 서버를 띄우고 브라우저를 열므로,
+  // 자식으로 spawn하기만 하면 터미널 창 없이 OAuth 동의까지 끝난다.
+  const claudeLogin = createClaudeLoginSession()
+
+  ipcMain.handle('claude:startLogin', () => {
+    // CLI가 남기는 출력을 모은다. 로그인 실패 사유는 거의 전부 여기 있다(구버전 서브커맨드
+    // 없음, 루프백 포트 점유, 키체인 거부). 읽지 않으면 사유가 사라지는 데다, 읽지 않는
+    // 파이프는 OS 버퍼가 차면 자식이 write에서 멈춘다(claude-run.ts가 겪은 함정).
+    let output = ''
+    claudeLogin.start({
+      spawnLogin: (onExit) => {
+        // cwd를 ~/.minit으로 고정한다 — Finder 실행 시 cwd가 '/'라 CLI 탐색이 홈 전체로
+        // 번지고 TCC 권한 프롬프트가 Minit.app 명의로 뜬다(claude-run.ts의 같은 이유).
+        // stdin은 쓰지 않는다(코드 붙여넣기 폴백을 지원하지 않는다).
+        const child = spawn('claude', [...LOGIN_ARGS], {
+          cwd: claudeWorkdir(),
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+        const collect = (b: Buffer): void => {
+          output = truncateDetail(output + b.toString())
+        }
+        child.stdout.on('data', collect)
+        child.stderr.on('data', collect)
+        // spawn 실패는 예외가 아니라 error 이벤트로 온다 — 리스너가 없으면 Node가
+        // unhandled 'error'로 main 프로세스를 죽인다. 종료로 흘려보내면 auth status
+        // 재검증이 사실을 판정한다.
+        child.on('error', onExit)
+        child.on('close', onExit)
+        return { kill: () => child.kill() }
+      },
+      verify: () => checkAuthStatus({ run: runWithStdin }),
+      sendEvent: (event) => {
+        // 성공이면 프로브로 상태를 다시 확정한다. record({available})로 단정하지 않는 이유는
+        // logged-in이 증명하는 건 인증뿐인데 available은 "지금 요약을 만들 수 있다"까지
+        // 주장하기 때문이다 — 한도가 소진된 계정이 "사용 가능"으로 표시된다. 게다가 record는
+        // 진행 중인 프로브의 결과를 폐기하므로(claude-status.ts) 방금 알아낸 usage_limit이
+        // 사라진다. 명시적 사용자 동작 직후라 프로브 1회의 사용량은 정당하다.
+        if (event.status === 'success') {
+          void claudeStatus.get(true).then((s) => {
+            if (!win.isDestroyed()) win.webContents.send('claude:status-changed', s)
+          })
+        }
+        // 실패엔 CLI 원문을 함께 싣는다 — 화면이 유일한 회수 경로다.
+        const enriched =
+          event.status === 'success' || output.trim() === '' ? event : { ...event, detail: output.trim() }
+        if (!win.isDestroyed()) win.webContents.send('claude:login-status', enriched)
+      },
+      setTimer: (ms, fn) => {
+        const t = setTimeout(fn, ms)
+        return () => clearTimeout(t)
+      }
+    })
+  })
+
+  ipcMain.handle('claude:cancelLogin', () => {
+    claudeLogin.cancel()
+  })
+
+  // 어느 계정으로 로그인했는지. auth status는 API를 호출하지 않아 사용량을 쓰지 않으므로
+  // 화면이 필요할 때 그때 물어도 된다(캐시를 두면 로그아웃·계정 변경 뒤 낡은 값을 보여준다).
+  ipcMain.handle('claude:account', async () => {
+    const auth = await checkAuthStatus({ run: runWithStdin })
+    return auth.kind === 'logged-in' ? auth.info : null
+  })
+
+  // 인앱 설치 — 명령은 공식 문서의 native installer이고 파이프가 있어 셸을 거친다.
+  const claudeInstaller = createClaudeInstaller()
+  const installLogPath = path.join(minitHome(), 'install-claude.log')
+
+  ipcMain.handle('claude:install', () => {
+    const send = (channel: string, payload: unknown): void => {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload)
+    }
+    const log = fileInstallLog(installLogPath)
+    log.reset(`[${new Date().toISOString()}] 설치 시작\n`)
+
+    claudeInstaller.start({
+      spawnInstall: nodeSpawnInstall(claudeInstallShell(process.platform), claudeWorkdir()),
+      onOutput: (chunk) => send('claude:install-output', chunk),
+      appendLog: log.append,
+      onDone: (result) => {
+        // 종료 코드를 최종 판정으로 쓰지 않는다. 명령이 `curl … | bash`인데 POSIX 셸은
+        // 파이프라인의 종료 코드를 마지막 명령(bash)의 것으로 정하고 pipefail이 없다 —
+        // curl이 404·프록시 407로 실패해도 bash는 빈 입력을 읽고 exit 0으로 끝난다(실측).
+        // 그래서 "claude를 실제로 찾을 수 있는가"로 확정한다.
+        if (!result.ok) {
+          send('claude:install-done', result)
+          return
+        }
+        // 확인에 수 초~1분이 걸릴 수 있어(프로브 포함) 진행 중임을 같은 출력 통로로 알린다.
+        // 여기서 install-done을 먼저 보내면 그 사이 화면에 [설치하기]가 다시 서서
+        // 사용자가 원격 스크립트를 한 번 더 실행한다.
+        const verifying = '\n설치를 확인하는 중…\n'
+        send('claude:install-output', verifying)
+        log.append(verifying)
+
+        void claudeStatus
+          .get(true)
+          .then((status) => {
+            send('claude:status-changed', status)
+            // native installer는 ~/.local/bin에 넣고 그 경로는 FALLBACK_DIRS에 이미 있어
+            // 셸 재시작 없이 곧바로 해석된다(shell-path.ts).
+            const missing =
+              status.kind === 'unavailable' && status.failure.reason === 'not_installed'
+            send(
+              'claude:install-done',
+              missing
+                ? {
+                    ok: false,
+                    detail: '설치 명령은 끝났지만 claude를 찾을 수 없습니다 — 아래 기록을 확인하세요.'
+                  }
+                : { ok: true }
+            )
+          })
+          .catch((e: unknown) => {
+            // 확인 자체가 실패하면 성공이라고 말할 근거가 없다. 삼키면 화면이 영구히 '설치 중'이 된다.
+            const detail = e instanceof Error ? e.message : String(e)
+            send('claude:install-done', { ok: false, detail: `설치 확인에 실패했습니다: ${detail}` })
+          })
+      },
+      setTimer: (ms, fn) => {
+        const t = setTimeout(fn, ms)
+        return () => clearTimeout(t)
+      }
+    })
+  })
+
+  ipcMain.handle('claude:cancelInstall', () => {
+    claudeInstaller.cancel()
+  })
+  ipcMain.handle('claude:installLogPath', () => installLogPath)
 
   ipcMain.handle('model:ensure', () =>
     downloadModel({

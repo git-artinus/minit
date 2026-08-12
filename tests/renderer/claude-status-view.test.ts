@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { claudeStatusView } from '../../src/renderer/src/state/claude-status-view'
+import {
+  claudeAccountLabel,
+  claudeStatusView
+} from '../../src/renderer/src/state/claude-status-view'
 import { summaryFailureView } from '../../src/renderer/src/state/summary-failure'
 import type { ClaudeStatus, SummaryFailureReason } from '../../src/shared/types'
 
@@ -91,5 +94,79 @@ describe('claudeStatusView', () => {
     const view = claudeStatusView(bogus as ClaudeStatus)
     expect(view.label).toBe('확인 실패')
     expect(view.detail).toBe('원문')
+  })
+})
+
+describe('showLogin — 인앱 로그인 버튼 노출', () => {
+  const view = (reason: SummaryFailureReason): ReturnType<typeof claudeStatusView> =>
+    claudeStatusView({ kind: 'unavailable', failure: { reason, detail: 'd' } })
+
+  // 앱이 브라우저 OAuth를 띄워 줄 수 있는 유일한 상황이다.
+  test('미로그인일 때만 로그인 버튼을 노출한다', () => {
+    expect(view('not_authenticated').showLogin).toBe(true)
+  })
+
+  // 설치가 안 됐으면 로그인시킬 대상이 없고, 사용량 소진은 로그인해도 해결되지 않는다 —
+  // 눌러도 소용없는 버튼은 사용자를 엉뚱한 곳으로 보낸다.
+  test('그 외 사유에는 노출하지 않는다', () => {
+    for (const reason of ['not_installed', 'usage_limit', 'timeout', 'unknown'] as const) {
+      expect(view(reason).showLogin).toBe(false)
+    }
+  })
+
+  test('사용 가능일 때는 노출하지 않는다', () => {
+    expect(claudeStatusView({ kind: 'available' }).showLogin).toBe(false)
+  })
+
+  // 설치 안내와 로그인 안내는 서로 다른 조치다. 함께 뜨면 사용자가 엉뚱한 쪽을 고친다.
+  test('설치 안내와 동시에 노출되지 않는다', () => {
+    const notInstalled = view('not_installed')
+    const notAuth = view('not_authenticated')
+    expect(notInstalled.showInstall).toBe(true)
+    expect(notInstalled.showLogin).toBe(false)
+    expect(notAuth.showInstall).toBe(false)
+    expect(notAuth.showLogin).toBe(true)
+  })
+
+  // 앱이 로그인을 대신 진행할 수 있게 됐으므로 터미널로 내보내는 안내는 사실과 다르다.
+  test('미로그인 안내가 터미널로 내보내지 않는다', () => {
+    expect(view('not_authenticated').hint).not.toContain('터미널')
+  })
+})
+
+describe('claudeAccountLabel — 어느 계정으로 로그인했는지', () => {
+  // 회사 계정과 개인 계정을 번갈아 쓰면 "로그인됨"만으로는 어느 쪽인지 알 수 없다.
+  test('이메일과 조직을 함께 보여준다', () => {
+    expect(
+      claudeAccountLabel({
+        authMethod: 'claude.ai',
+        email: 'user@example.com',
+        orgName: 'Example Org',
+        subscriptionType: 'team'
+      })
+    ).toBe('user@example.com · Example Org · team')
+  })
+
+  // CLI가 무엇을 실어 보내는지는 계정 종류·버전에 따라 다르다. 없는 값 때문에
+  // '· ·' 같은 빈 구분자가 남으면 화면이 깨져 보인다.
+  test('없는 항목은 건너뛴다', () => {
+    expect(claudeAccountLabel({ authMethod: 'claude.ai', email: 'user@example.com' })).toBe(
+      'user@example.com'
+    )
+    expect(claudeAccountLabel({ authMethod: 'claude.ai', orgName: 'Example Org' })).toBe(
+      'Example Org'
+    )
+  })
+
+  // 부가 정보가 하나도 없어도 로그인 사실은 유효하다 — 그때는 인증 방식이라도 알린다.
+  test('부가 정보가 전혀 없으면 인증 방식을 보여준다', () => {
+    expect(claudeAccountLabel({ authMethod: 'claude.ai' })).toBe('claude.ai')
+  })
+
+  // 계정을 아직 못 받았거나 로그인 상태가 아니면 표시할 게 없다.
+  test('계정이 없으면 null이다', () => {
+    expect(claudeAccountLabel(null)).toBeNull()
+    // 인증 방식조차 비면 보여줄 사실이 없다.
+    expect(claudeAccountLabel({ authMethod: '' })).toBeNull()
   })
 })
