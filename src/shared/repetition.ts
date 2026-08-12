@@ -8,8 +8,11 @@ export interface RepetitionSpan {
 }
 
 // 캘리브레이션 대상(코퍼스로 조정) — 짧은 실제 맞장구는 제외하고 지속된 hallucination loop만 잡는다.
+// 실측(회의 3건·약 90분): 실제 발화의 연속 동일 세그먼트 최대 run은 2회라 count 6은 3배 여유가 있다.
+// ponytail: MIN_SPAN_MS는 loop 표본 1건(44초·9회)에 기댄 잠정값이다. 세그먼트 원본이 보존되면
+// 표본을 모아 재조정한다(Refs #55).
 const MIN_REPEAT_COUNT = 6
-const MIN_SPAN_MS = 60_000
+const MIN_SPAN_MS = 20_000
 
 // 공백·구두점을 제거해 "구두점만 다른" 반복을 동일 텍스트로 본다.
 function normalize(text: string): string {

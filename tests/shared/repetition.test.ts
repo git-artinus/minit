@@ -12,7 +12,7 @@ function run(text: string, startMs: number, n: number, stepMs = 10_000): Mergeab
 }
 
 describe('detectRepetitions', () => {
-  test('연속 6회 이상·60초 이상 반복은 span으로 잡는다', () => {
+  test('연속 6회 이상·20초 이상 반복은 span으로 잡는다', () => {
     const segs = [{ startMs: 0, endMs: 5_000, text: '정상 발화' }, ...run('반복문구.', 5_000, 8)]
     const spans = detectRepetitions(segs)
     expect(spans).toHaveLength(1)
@@ -24,7 +24,7 @@ describe('detectRepetitions', () => {
   })
 
   test('지속 시간이 임계 미만이면 잡지 않는다', () => {
-    // 8회지만 각 2초 → 16초 < 60초
+    // 8회지만 각 2초 → 16초 < 20초
     expect(detectRepetitions(run('빠른반복.', 0, 8, 2_000))).toEqual([])
   })
 
@@ -54,7 +54,7 @@ describe('detectRepetitions', () => {
   })
 
   test('count가 정확히 MIN_REPEAT_COUNT(6)이면 탐지, 5면 탐지하지 않는다(duration은 양쪽 다 충분)', () => {
-    // stepMs=15_000 → count=6일 때 duration 90_000, count=5일 때 duration 75_000. 둘 다 60_000 이상이라
+    // stepMs=15_000 → count=6일 때 duration 90_000, count=5일 때 duration 75_000. 둘 다 20_000 이상이라
     // duration 문턱과 무관하게 count 문턱만으로 갈린다.
     const detected = detectRepetitions(run('경계반복.', 0, 6, 15_000))
     expect(detected).toHaveLength(1)
@@ -64,10 +64,39 @@ describe('detectRepetitions', () => {
     expect(notDetected).toEqual([])
   })
 
-  test('duration이 정확히 MIN_SPAN_MS(60_000)이면 탐지한다(경계 포함, >=)', () => {
-    const spans = detectRepetitions(run('경계지속시간.', 0, 6, 10_000))
+  test('duration이 정확히 MIN_SPAN_MS(20_000)이면 탐지한다(경계 포함, >=)', () => {
+    const spans = detectRepetitions(run('경계지속시간.', 0, 10, 2_000))
     expect(spans).toHaveLength(1)
-    expect(spans[0].endMs - spans[0].startMs).toBe(60_000)
+    expect(spans[0].endMs - spans[0].startMs).toBe(20_000)
+  })
+
+  // 2026-08-12 회의록 실측 케이스 — whisper 원본 세그먼트 321~329(1,416,840~1,460,840ms).
+  // 44초/9회로 기존 60초 문턱을 통과해 트랜스크립트에 그대로 남았다(Refs #54).
+  test('실측 hallucination loop(44초·9회)를 탐지한다', () => {
+    const bounds = [
+      [1_416_840, 1_418_840],
+      [1_418_840, 1_420_840],
+      [1_420_840, 1_424_840],
+      [1_424_840, 1_426_840],
+      [1_426_840, 1_428_840],
+      [1_428_840, 1_446_840],
+      [1_446_840, 1_450_840],
+      [1_450_840, 1_458_840],
+      [1_458_840, 1_460_840]
+    ]
+    const segs = [
+      { startMs: 1_414_840, endMs: 1_416_840, text: '우리는 그냥 이거 쓰거든요' },
+      ...bounds.map(([startMs, endMs]) => ({ startMs, endMs, text: '롱고시피' })),
+      { startMs: 1_460_840, endMs: 1_468_840, text: '저는 교육에서 더 확인할 거 확인해서' }
+    ]
+    const spans = detectRepetitions(segs)
+    expect(spans).toHaveLength(1)
+    expect(spans[0]).toEqual({
+      startMs: 1_416_840,
+      endMs: 1_460_840,
+      repeatedText: '롱고시피',
+      count: 9
+    })
   })
 
   test('공백·구두점만 있는 텍스트가 길게 반복돼도 잡지 않는다(침묵을 반복으로 오탐하지 않음)', () => {
