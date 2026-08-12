@@ -1,4 +1,5 @@
 import type { ClaudeStatus, SummaryFailure } from '../shared/types'
+import { checkAuthStatus, type AuthStatusResult } from './claude-auth'
 import type { CommandExists } from './env-check'
 import { classifyClaudeFailure } from './pipeline/summary-error'
 import type { RunWithStdin } from './pipeline/summarizer'
@@ -42,12 +43,18 @@ export function availabilityEvidence(failure: SummaryFailure): ClaudeStatus {
 }
 
 /**
- * claude를 실제로 1회 실행해 사용 가능 여부를 판정한다. `which claude`로는 알 수 없는
+ * claude가 지금 요약을 만들 수 있는 상태인지 판정한다. `which claude`로는 알 수 없는
  * 로그인·사용량 문제를 요약 시점이 아니라 그 전에 알려주기 위한 것이다(#8).
+ *
+ * 3단계이고 앞 두 단계는 사용량을 쓰지 않는다 — 미설치·미로그인은 그 단계에서 확정되므로
+ * 거기서 끝낸다. 로그인됨을 확인한 뒤에도 프로브를 돌리는 이유는 `auth status`가
+ * 사용량을 모르기 때문이다.
  */
 export async function probeClaude(deps: {
   commandExists: CommandExists
   run: RunWithStdin
+  // 주입 가능하게 둔다 — 실제 프로세스를 띄우지 않고 3단 분기를 결정적으로 테스트한다.
+  checkAuth?: (deps: { run: RunWithStdin }) => Promise<AuthStatusResult>
 }): Promise<ClaudeStatus> {
   // 미설치가 확실하면 실행하지 않는다. spawn ENOENT로도 같은 결론이 나오지만, 설치조차 안 한
   // 사용자에게 프로세스 생성을 시도할 이유가 없다.
@@ -57,6 +64,23 @@ export async function probeClaude(deps: {
       failure: { reason: 'not_installed', detail: 'PATH에서 claude 실행 파일을 찾지 못했습니다.' }
     }
   }
+
+  const auth = await (deps.checkAuth ?? checkAuthStatus)({ run: deps.run })
+  if (auth.kind === 'not-installed') {
+    return {
+      kind: 'unavailable',
+      // which는 통과했는데 실행이 ENOENT라면 그 사이 삭제·이동된 것이다.
+      failure: { reason: 'not_installed', detail: 'claude 실행 파일을 실행할 수 없습니다.' }
+    }
+  }
+  if (auth.kind === 'logged-out') {
+    return {
+      kind: 'unavailable',
+      failure: { reason: 'not_authenticated', detail: 'Claude CLI에 로그인되어 있지 않습니다.' }
+    }
+  }
+
+  // logged-in이면 남은 미지수는 사용량뿐이고, unsupported면 로그인 여부조차 프로브가 알아내야 한다.
   try {
     // stdin은 비운다 — 프롬프트를 인자로 넘기므로 넘길 게 없다.
     await deps.run('claude', ['-p', PROBE_PROMPT], '', PROBE_TIMEOUT_MS)
@@ -72,7 +96,10 @@ export interface ClaudeStatusChecker {
    * force=true면 캐시를 무시하고 다시 실행한다 — 사용량을 쓰므로 사용자가 요청할 때만 쓴다.
    */
   get: (force?: boolean) => Promise<ClaudeStatus>
-  /** 실제 요약 실행에서 얻은 판정을 반영한다. 프로브를 돌리지 않고 얻는 무료 증거다. */
+  /**
+   * 프로브 밖에서 확인된 판정을 반영한다 — 실제 요약 실행·재생성이 알아낸 사실이다.
+   * 프로브를 돌리지 않으므로 사용량을 쓰지 않는다.
+   */
   record: (status: ClaudeStatus) => void
 }
 

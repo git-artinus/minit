@@ -11,6 +11,11 @@ import {
   SUMMARY_TIMEOUT_MS,
   type ClaudeRunFacts
 } from '../../src/main/pipeline/claude-run'
+import {
+  AUTH_STATUS_ARGS,
+  AUTH_STATUS_TIMEOUT_MS,
+  type AuthStatusResult
+} from '../../src/main/claude-auth'
 import type { ClaudeStatus, SummaryFailureReason } from '../../src/shared/types'
 
 // probeClaude는 실패 시 진단 전문을 console.error로 남긴다(분류기 경유). 출력만 죽인다.
@@ -38,6 +43,12 @@ function timedOut(): ClaudeRunError {
 
 const installed = (): Promise<boolean> => Promise.resolve(true)
 
+const authResult = (r: AuthStatusResult) => () => Promise.resolve(r)
+// auth status가 판정에 개입하지 않는 경로. "프로브가 무엇을 판정하는가"를 고정하는 테스트는
+// 이걸 써야 원래 의도가 그대로 남는다(auth status가 먼저 답하면 프로브는 아예 돌지 않는다).
+const authSkipped = authResult({ kind: 'unsupported' })
+const authLoggedIn = authResult({ kind: 'logged-in', info: { authMethod: 'claude.ai' } })
+
 describe('probeClaude', () => {
   test('설치되어 있지 않으면 실행하지 않고 not_installed', async () => {
     const run = vi.fn()
@@ -54,7 +65,8 @@ describe('probeClaude', () => {
   test('정상 종료하면 available', async () => {
     const status = await probeClaude({
       commandExists: installed,
-      run: () => Promise.resolve({ stdout: 'ok' })
+      run: () => Promise.resolve({ stdout: 'ok' }),
+      checkAuth: authSkipped
     })
     expect(status).toEqual({ kind: 'available' })
   })
@@ -63,7 +75,8 @@ describe('probeClaude', () => {
   test('로그인이 안 되어 있으면 unavailable + not_authenticated', async () => {
     const status = await probeClaude({
       commandExists: installed,
-      run: () => Promise.reject(runError({ stdout: 'Not logged in · Please run /login' }))
+      run: () => Promise.reject(runError({ stdout: 'Not logged in · Please run /login' })),
+      checkAuth: authSkipped
     })
     expect(status.kind).toBe('unavailable')
     expect(status.kind !== 'available' && status.failure.reason).toBe('not_authenticated')
@@ -72,7 +85,8 @@ describe('probeClaude', () => {
   test('사용량이 소진됐으면 unavailable + usage_limit', async () => {
     const status = await probeClaude({
       commandExists: installed,
-      run: () => Promise.reject(runError({ stdout: 'Usage limit reached' }))
+      run: () => Promise.reject(runError({ stdout: 'Usage limit reached' })),
+      checkAuth: authSkipped
     })
     expect(status.kind).toBe('unavailable')
     expect(status.kind !== 'available' && status.failure.reason).toBe('usage_limit')
@@ -83,7 +97,8 @@ describe('probeClaude', () => {
   test('타임아웃은 확정 판정이 아니라 undetermined다', async () => {
     const status = await probeClaude({
       commandExists: installed,
-      run: () => Promise.reject(timedOut())
+      run: () => Promise.reject(timedOut()),
+      checkAuth: authSkipped
     })
     expect(status.kind).toBe('undetermined')
   })
@@ -92,12 +107,76 @@ describe('probeClaude', () => {
   // 전원이 매 실행마다 60초를 버리고 "확인 실패"를 보는 결과가 된다.
   test('claude를 -p + 프로브 프롬프트로, 빈 stdin에 짧은 제한 시간으로 실행한다', async () => {
     const run = vi.fn().mockResolvedValue({ stdout: 'ok' })
-    await probeClaude({ commandExists: installed, run })
+    await probeClaude({ commandExists: installed, run, checkAuth: authSkipped })
 
     // --bare는 OAuth를 무시하고 ANTHROPIC_API_KEY만 보므로 붙이면 로그인 여부를 검사할 수 없다.
     // toEqual이라 그 플래그를 포함한 어떤 인자 변경도 여기서 걸린다.
     expect(run).toHaveBeenCalledWith('claude', ['-p', PROBE_PROMPT], '', PROBE_TIMEOUT_MS)
     expect(PROBE_TIMEOUT_MS).toBeLessThan(SUMMARY_TIMEOUT_MS)
+  })
+
+  // 이 재구성의 핵심. 미로그인 사용자에게 사용량 소모를 시도하지 않는다 —
+  // auth status가 이미 확정 판정을 줬으므로 프로브는 아무것도 더 알려주지 못한다.
+  test('미로그인이면 프로브를 돌리지 않고 not_authenticated', async () => {
+    const run = vi.fn()
+    const status = await probeClaude({
+      commandExists: installed,
+      run,
+      checkAuth: authResult({ kind: 'logged-out' })
+    })
+
+    expect(run).not.toHaveBeenCalled()
+    expect(status).toEqual({
+      kind: 'unavailable',
+      failure: { reason: 'not_authenticated', detail: expect.any(String) }
+    })
+  })
+
+  // which는 통과했는데 auth status가 ENOENT면 그 사이 삭제된 것이다. 프로브는 무의미하다.
+  test('auth status가 미설치를 보고하면 프로브를 돌리지 않는다', async () => {
+    const run = vi.fn()
+    const status = await probeClaude({
+      commandExists: installed,
+      run,
+      checkAuth: authResult({ kind: 'not-installed' })
+    })
+
+    expect(run).not.toHaveBeenCalled()
+    expect(status).toEqual({
+      kind: 'unavailable',
+      failure: { reason: 'not_installed', detail: expect.any(String) }
+    })
+  })
+
+  // auth status는 사용량을 모른다. 로그인됨을 확인한 뒤에도 프로브를 돌려야
+  // usage_limit을 요약 실행 전에 알 수 있다(#8의 존재 이유).
+  test('로그인됐으면 프로브를 돌려 사용량까지 확인한다', async () => {
+    const run = vi.fn().mockRejectedValue(runError({ stdout: 'Usage limit reached' }))
+    const status = await probeClaude({ commandExists: installed, run, checkAuth: authLoggedIn })
+
+    expect(run).toHaveBeenCalledWith('claude', ['-p', PROBE_PROMPT], '', PROBE_TIMEOUT_MS)
+    expect(status.kind).toBe('unavailable')
+    expect(status.kind !== 'available' && status.failure.reason).toBe('usage_limit')
+  })
+
+  test('로그인됐고 프로브가 정상 종료하면 available', async () => {
+    const status = await probeClaude({
+      commandExists: installed,
+      run: () => Promise.resolve({ stdout: 'ok' }),
+      checkAuth: authLoggedIn
+    })
+    expect(status).toEqual({ kind: 'available' })
+  })
+
+  // 구버전 CLI 하위호환. auth status를 못 쓰면 기존 경로 그대로 — 프로브의 키워드 분류가
+  // 로그인 여부를 잡아낸다. 여기서 프로브를 건너뛰면 구버전 사용자는 판정을 아예 못 받는다.
+  test('auth status를 못 쓰면 프로브로 폴백한다', async () => {
+    const run = vi.fn().mockRejectedValue(runError({ stdout: 'Not logged in · Please run /login' }))
+    const status = await probeClaude({ commandExists: installed, run, checkAuth: authSkipped })
+
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(status.kind).toBe('unavailable')
+    expect(status.kind !== 'available' && status.failure.reason).toBe('not_authenticated')
   })
 })
 
@@ -274,6 +353,39 @@ describe('createClaudeStatusChecker', () => {
       checker.record({ kind: 'undetermined', failure: { reason: 'timeout', detail: 'd' } })
 
       expect(onChanged).not.toHaveBeenCalled()
+    })
+  })
+})
+
+// 프로덕션이 실제로 타는 경로. 위 테스트들은 전부 checkAuth를 주입하므로 기본 배선
+// (`deps.checkAuth ?? checkAuthStatus`)을 아무도 밟지 않는다 — 배선이 깨지면
+// claude:status invoke가 전 사용자에게서 실패하는데 테스트는 통과한다.
+describe('probeClaude 기본 배선 — checkAuth를 주입하지 않은 경우', () => {
+  test('auth status를 먼저 실행하고 그다음 프로브를 실행한다', async () => {
+    const calls: { args: string[]; timeout: number | undefined }[] = []
+    const run = vi.fn(async (_cmd: string, args: string[], _stdin: string, timeout?: number) => {
+      calls.push({ args, timeout })
+      // 1차(auth status)는 로그인됨을 알리고, 2차(프로브)는 정상 종료한다.
+      return { stdout: args[0] === 'auth' ? JSON.stringify({ loggedIn: true }) : 'ok' }
+    })
+
+    const status = await probeClaude({ commandExists: installed, run })
+
+    expect(status).toEqual({ kind: 'available' })
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toEqual({ args: [...AUTH_STATUS_ARGS], timeout: AUTH_STATUS_TIMEOUT_MS })
+    expect(calls[1]).toEqual({ args: ['-p', PROBE_PROMPT], timeout: PROBE_TIMEOUT_MS })
+  })
+
+  test('기본 배선에서 미로그인이면 프로브를 돌리지 않는다', async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: JSON.stringify({ loggedIn: false }) })
+
+    const status = await probeClaude({ commandExists: installed, run })
+
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(status).toEqual({
+      kind: 'unavailable',
+      failure: { reason: 'not_authenticated', detail: expect.any(String) }
     })
   })
 })

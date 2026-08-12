@@ -1,6 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { ClaudeStatus, EnvReport } from '../../../shared/types'
-import { deriveSetupState, isEnvReady, type SetupProgress, type SetupView } from './setup-logic'
+import {
+  appendInstallLog,
+  deriveSetupState,
+  isEnvReady,
+  type SetupProgress,
+  type SetupView
+} from './setup-logic'
 
 export interface SetupApi {
   view: SetupView
@@ -16,6 +22,24 @@ export interface SetupApi {
   claudeChecking: boolean
   /** claude를 다시 실행해 상태를 새로 확인한다(캐시 무시). */
   recheckClaude: () => Promise<void>
+  /**
+   * 인앱 로그인 진행 단계. ClaudeStatus에는 이 상태가 없다 — '대기 중'·'미완료'는 CLI의
+   * 판정이 아니라 이 세션의 진행 상황이라, 섞으면 claudeStatusView가 만들지 않는 라벨을
+   * 화면이 기대하게 된다.
+   */
+  claudeLoginPhase: 'idle' | 'waiting' | 'incomplete' | 'error'
+  claudeLoginError: string | null
+  /** 브라우저 OAuth 로그인을 시작한다. 완료는 claude:login-status 이벤트로 온다. */
+  startClaudeLogin: () => Promise<void>
+  cancelClaudeLogin: () => Promise<void>
+  /** 인앱 CLI 설치 진행 단계. 로그인과 같은 이유로 ClaudeStatus와 섞지 않는다. */
+  claudeInstallPhase: 'idle' | 'running' | 'failed'
+  /** 설치 명령의 출력. 끝부분만 유지한다 — 전문은 로그 파일에 남는다. */
+  claudeInstallLog: string
+  claudeInstallError: string | null
+  claudeInstallLogPath: string | null
+  startClaudeInstall: () => Promise<void>
+  cancelClaudeInstall: () => Promise<void>
   ready: boolean
   minimized: boolean
   setMinimized: (m: boolean) => void
@@ -38,6 +62,13 @@ function useSetupInternal(): SetupApi {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null)
   const [claudeError, setClaudeError] = useState<string | null>(null)
   const [claudeChecking, setClaudeChecking] = useState(false)
+  const [claudeLoginPhase, setClaudeLoginPhase] = useState<SetupApi['claudeLoginPhase']>('idle')
+  const [claudeLoginError, setClaudeLoginError] = useState<string | null>(null)
+  const [claudeInstallPhase, setClaudeInstallPhase] =
+    useState<SetupApi['claudeInstallPhase']>('idle')
+  const [claudeInstallLog, setClaudeInstallLog] = useState('')
+  const [claudeInstallError, setClaudeInstallError] = useState<string | null>(null)
+  const [claudeInstallLogPath, setClaudeInstallLogPath] = useState<string | null>(null)
   const [minimized, setMinimized] = useState(false)
 
   const recheck = useCallback(async (): Promise<void> => {
@@ -67,6 +98,47 @@ function useSetupInternal(): SetupApi {
 
   const recheckClaude = useCallback((): Promise<void> => checkClaude(true), [checkClaude])
 
+  const startClaudeLogin = useCallback(async (): Promise<void> => {
+    setClaudeLoginError(null)
+    setClaudeLoginPhase('waiting')
+    try {
+      await window.minuting.startClaudeLogin()
+    } catch (e) {
+      // invoke 자체가 실패한 경우. 이걸 삼키면 '대기 중'에 영구 고착된다.
+      setClaudeLoginError(e instanceof Error ? e.message : String(e))
+      setClaudeLoginPhase('error')
+    }
+  }, [])
+
+  const cancelClaudeLogin = useCallback(async (): Promise<void> => {
+    setClaudeLoginPhase('idle')
+    setClaudeLoginError(null)
+    await window.minuting.cancelClaudeLogin().catch(() => {})
+  }, [])
+
+  const startClaudeInstall = useCallback(async (): Promise<void> => {
+    setClaudeInstallError(null)
+    setClaudeInstallLog('')
+    setClaudeInstallPhase('running')
+    // 전문을 볼 경로를 미리 확보한다 — 실패한 뒤에 조회하면 그때 또 실패할 수 있다.
+    window.minuting
+      .getClaudeInstallLogPath()
+      .then(setClaudeInstallLogPath)
+      .catch(() => {})
+    try {
+      await window.minuting.startClaudeInstall()
+    } catch (e) {
+      setClaudeInstallError(e instanceof Error ? e.message : String(e))
+      setClaudeInstallPhase('failed')
+    }
+  }, [])
+
+  const cancelClaudeInstall = useCallback(async (): Promise<void> => {
+    setClaudeInstallPhase('idle')
+    setClaudeInstallError(null)
+    await window.minuting.cancelClaudeInstall().catch(() => {})
+  }, [])
+
   useEffect(() => {
     recheck()
     // 실행마다 1회. main이 결과를 캐시하므로 이 호출이 곧 그 1회이고, 이후 화면들은 캐시를 읽는다.
@@ -80,6 +152,43 @@ function useSetupInternal(): SetupApi {
   // 로그인 문제로 실패해 main이 사실을 알게 돼도 화면은 앱 실행 시점의 값에 머문다.
   useEffect(() => {
     return window.minuting.onClaudeStatus(setClaude)
+  }, [])
+
+  // 설치 출력·완료 구독. 성공 시 상태 갱신도 main이 밀어주므로(claude:status-changed)
+  // 여기서는 진행 단계와 출력만 다룬다.
+  useEffect(() => {
+    const offOutput = window.minuting.onClaudeInstallOutput((chunk) =>
+      setClaudeInstallLog((prev) => appendInstallLog(prev, chunk))
+    )
+    const offDone = window.minuting.onClaudeInstallDone((r) => {
+      setClaudeInstallPhase(r.ok ? 'idle' : 'failed')
+      setClaudeInstallError(r.ok ? null : r.detail)
+    })
+    return () => {
+      offOutput()
+      offDone()
+    }
+  }, [])
+
+  // 로그인 결과 구독. 성공 시 상태 갱신은 main이 claude:status-changed로 밀어주므로 여기서는
+  // 진행 단계만 정리한다 — 같은 사실을 두 곳에서 만들지 않는다.
+  useEffect(() => {
+    return window.minuting.onClaudeLoginStatus((e) => {
+      if (e.status === 'success') {
+        setClaudeLoginPhase('idle')
+        setClaudeLoginError(null)
+        return
+      }
+      // CLI 원문이 있으면 함께 남긴다 — 이 앱에는 파일 로거가 없어 화면이 유일한 회수 경로다.
+      const detail = e.detail === undefined ? '' : `\n${e.detail}`
+      if (e.status === 'incomplete') {
+        setClaudeLoginError(detail === '' ? null : detail.trim())
+        setClaudeLoginPhase('incomplete')
+      } else {
+        setClaudeLoginError(`${e.message}${detail}`)
+        setClaudeLoginPhase('error')
+      }
+    })
   }, [])
 
   const download = useCallback(async (): Promise<void> => {
@@ -107,6 +216,16 @@ function useSetupInternal(): SetupApi {
     claudeError,
     claudeChecking,
     recheckClaude,
+    claudeLoginPhase,
+    claudeLoginError,
+    startClaudeLogin,
+    cancelClaudeLogin,
+    claudeInstallPhase,
+    claudeInstallLog,
+    claudeInstallError,
+    claudeInstallLogPath,
+    startClaudeInstall,
+    cancelClaudeInstall,
     ready: isEnvReady(env),
     minimized,
     setMinimized,

@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { deriveSetupState, isEnvReady } from '../../src/renderer/src/state/setup-logic'
+import {
+  appendInstallLog,
+  deriveSetupState,
+  INSTALL_LOG_MAX_CHARS,
+  INSTALL_LOG_MAX_LINES,
+  isEnvReady
+} from '../../src/renderer/src/state/setup-logic'
 import type { ClaudeStatus, EnvReport, SummaryFailureReason } from '../../src/shared/types'
 
 function env(partial: Partial<EnvReport>): EnvReport {
@@ -118,5 +124,53 @@ describe('deriveSetupState', () => {
     expect(deriveSetupState(env({ whisper: false }), unavailable('not_installed'), null, null)).toEqual({
       kind: 'unsupported'
     })
+  })
+})
+
+describe('appendInstallLog — 설치 출력 누적', () => {
+  test('청크를 이어 붙인다', () => {
+    expect(appendInstallLog('a', 'b')).toBe('ab')
+  })
+
+  // 설치 스크립트는 진행률을 줄 단위로 갱신해 수천 줄이 나올 수 있다. 전량을 렌더러 상태에
+  // 쌓으면 메모리와 렌더 비용이 계속 커진다 — 전문은 로그 파일에 남으므로 화면은 끝부분만 있으면 된다.
+  test('상한을 넘으면 끝부분만 남긴다', () => {
+    const many = Array.from({ length: INSTALL_LOG_MAX_LINES + 10 }, (_, i) => `줄 ${i}`).join('\n')
+    const kept = appendInstallLog('', many).split('\n')
+
+    expect(kept).toHaveLength(INSTALL_LOG_MAX_LINES)
+    // 오래된 줄이 아니라 최신 줄이 남아야 한다 — 실패 원인은 보통 끝에 있다.
+    expect(kept.at(-1)).toBe(`줄 ${INSTALL_LOG_MAX_LINES + 9}`)
+    expect(kept[0]).not.toBe('줄 0')
+  })
+
+  test('상한 이하면 그대로 둔다', () => {
+    expect(appendInstallLog('a\n', 'b')).toBe('a\nb')
+  })
+})
+
+describe('appendInstallLog — 줄바꿈 없는 출력', () => {
+  // 진행률을 캐리지 리턴으로 갱신하는 프로그램의 출력은 아무리 길어도 한 줄이다.
+  // 줄 수만 세면 상한이 걸리지 않아 화면에 수 MB짜리 한 줄이 쌓인다.
+  test('줄바꿈이 없어도 글자 수 상한이 걸린다', () => {
+    const oneLongLine = 'x'.repeat(INSTALL_LOG_MAX_CHARS * 2)
+
+    const kept = appendInstallLog('', oneLongLine)
+
+    expect(kept.length).toBeLessThanOrEqual(INSTALL_LOG_MAX_CHARS)
+  })
+
+  test('여러 번 이어 붙여도 상한을 넘지 않는다', () => {
+    let log = ''
+    for (let i = 0; i < 50; i++) log = appendInstallLog(log, '진행률\r'.repeat(200))
+
+    expect(log.length).toBeLessThanOrEqual(INSTALL_LOG_MAX_CHARS)
+  })
+
+  // 잘라낼 때 오래된 쪽을 버려야 한다 — 실패 원인은 보통 끝에 있다.
+  test('글자 수로 자를 때도 최신 내용이 남는다', () => {
+    const kept = appendInstallLog('오래된'.repeat(INSTALL_LOG_MAX_CHARS), '최신 내용')
+
+    expect(kept.endsWith('최신 내용')).toBe(true)
   })
 })

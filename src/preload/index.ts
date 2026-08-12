@@ -3,6 +3,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AppSettings,
   AutoCheckStatus,
+  ClaudeAccount,
+  ClaudeInstallDone,
+  ClaudeLoginEvent,
   ClaudeStatus,
   GithubLoginState,
   GithubLoginStatusEvent,
@@ -21,6 +24,8 @@ import type { ExportFormat } from '../shared/share-format'
 const api = {}
 
 const minutingApi = {
+  // 렌더러에는 process가 없다(nodeIntegration 꺼짐). 설치 명령이 플랫폼마다 달라 이 값이 필요하다.
+  platform: process.platform,
   checkEnv: () => ipcRenderer.invoke('env:check'),
   // 계약(캐시·force·사용량)은 main의 ClaudeStatusChecker.get이 원본이다.
   checkClaudeStatus: (force = false): Promise<ClaudeStatus> =>
@@ -34,6 +39,38 @@ const minutingApi = {
     ipcRenderer.on('claude:status-changed', listener)
     return () => {
       ipcRenderer.removeListener('claude:status-changed', listener)
+    }
+  },
+  // 인앱 Claude 로그인 — 브라우저 OAuth 동의를 거치므로 결과는 invoke 반환값이 아니라
+  // claude:login-status 이벤트로 온다.
+  startClaudeLogin: (): Promise<void> => ipcRenderer.invoke('claude:startLogin'),
+  // 어느 계정으로 로그인했는지 — 로그인 여부만으로는 회사·개인 계정을 구분할 수 없다.
+  getClaudeAccount: (): Promise<ClaudeAccount | null> => ipcRenderer.invoke('claude:account'),
+  cancelClaudeLogin: (): Promise<void> => ipcRenderer.invoke('claude:cancelLogin'),
+  onClaudeLoginStatus: (cb: (e: ClaudeLoginEvent) => void): (() => void) => {
+    const listener = (_: unknown, e: ClaudeLoginEvent): void => cb(e)
+    ipcRenderer.on('claude:login-status', listener)
+    return () => {
+      ipcRenderer.removeListener('claude:login-status', listener)
+    }
+  },
+  // 인앱 Claude CLI 설치 — 출력이 계속 나오므로 진행은 이벤트로 받는다.
+  startClaudeInstall: (): Promise<void> => ipcRenderer.invoke('claude:install'),
+  cancelClaudeInstall: (): Promise<void> => ipcRenderer.invoke('claude:cancelInstall'),
+  // 화면은 끝부분만 유지하므로, 전문을 볼 수 있는 경로를 알려줘야 한다.
+  getClaudeInstallLogPath: (): Promise<string> => ipcRenderer.invoke('claude:installLogPath'),
+  onClaudeInstallOutput: (cb: (chunk: string) => void): (() => void) => {
+    const listener = (_: unknown, chunk: string): void => cb(chunk)
+    ipcRenderer.on('claude:install-output', listener)
+    return () => {
+      ipcRenderer.removeListener('claude:install-output', listener)
+    }
+  },
+  onClaudeInstallDone: (cb: (r: ClaudeInstallDone) => void): (() => void) => {
+    const listener = (_: unknown, r: ClaudeInstallDone): void => cb(r)
+    ipcRenderer.on('claude:install-done', listener)
+    return () => {
+      ipcRenderer.removeListener('claude:install-done', listener)
     }
   },
   ensureModel: () => ipcRenderer.invoke('model:ensure'),

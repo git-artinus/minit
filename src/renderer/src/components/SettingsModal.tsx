@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type {
   AppSettings,
   AutoCheckStatus,
+  ClaudeAccount,
   GithubLoginState,
   SlackChannel,
   SlackMembersState,
@@ -10,8 +11,10 @@ import type {
   UpdateCheckResult,
   UpdateProgress
 } from '../../../shared/types'
-import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
-import { claudeStatusView } from '../state/claude-status-view'
+import { CLAUDE_DEPENDENCY_NOTICE } from '../../../shared/claude-cli'
+import { claudeAccountLabel, claudeStatusView } from '../state/claude-status-view'
+import { ClaudeInstallAction, ClaudeInstallCommand, ClaudeInstallStatus } from './ClaudeInstallPanel'
+import { ClaudeLoginAction, ClaudeLoginStatus } from './ClaudeLoginButton'
 import { slackSyncErrorText } from '../state/slack-sync-error'
 import { changelogUrl, releasesPageUrl } from '../../../shared/release'
 import { useMeetings } from '../state/meetings'
@@ -79,11 +82,13 @@ export function SettingsModal(props: {
   // Claude CLI 상태(#8) — 설치 여부(which)가 아니라 실제 실행 결과다. 상태는 SetupProvider가
   // 단일 소스로 들고 있다 — 각자 조회하면 이 화면과 설치 패널이 서로 다른 상태를 보여주고,
   // 무엇보다 확인 때마다 사용량이 나간다.
-  const { claude, claudeError, claudeChecking, recheckClaude } = useSetup()
+  const { claude, claudeError, claudeChecking, recheckClaude, claudeLoginPhase, claudeInstallPhase } =
+    useSetup()
   const claudeStatus = claude === null ? null : claudeStatusView(claude)
-  const [installCopied, setInstallCopied] = useState(false)
-  const [copyError, setCopyError] = useState<string | null>(null)
-
+  // 주 동작 버튼이 안내문이 가리키는 라벨을 벗어난 상태(SetupPanel과 같은 판단).
+  const claudeActionBusy = claudeLoginPhase === 'waiting' || claudeInstallPhase !== 'idle'
+  const [account, setAccount] = useState<ClaudeAccount | null>(null)
+  const accountLabel = claudeAccountLabel(account)
   const [github, setGithub] = useState<GithubLoginState | null>(null)
   const [githubConnecting, setGithubConnecting] = useState(false)
   const [githubRepos, setGithubRepos] = useState<string[] | null>(null)
@@ -104,9 +109,8 @@ export function SettingsModal(props: {
     setUpdateDownloading(false)
     setUpdateProgress(null)
     setUpdateError(null)
-    setInstallCopied(false)
-    setCopyError(null)
     setAutoCheckStatus(null)
+    setAccount(null)
     window.minuting.getAutoCheckStatus().then(setAutoCheckStatus).catch(() => {})
     window.minuting.getSettings().then(setSettings).catch(() => {})
     window.minuting.getAppVersion().then(setVersion).catch(() => {})
@@ -164,6 +168,25 @@ export function SettingsModal(props: {
     if (!props.open || !slackToken?.saved) return
     window.minuting.getSlackMembers().then(setSlackMembers).catch(() => {})
   }, [props.open, slackToken?.saved])
+
+  // 로그인된 계정. claude 상태가 바뀔 때도 다시 물어 로그인 직후 계정이 곧바로 나타나게 한다.
+  // 캐시하지 않는 이유는 로그아웃·계정 변경이 앱 밖에서 일어나기 때문이다 — auth status는
+  // API를 호출하지 않아 사용량을 쓰지 않으므로 필요할 때 물어도 된다.
+  useEffect(() => {
+    if (!props.open) return
+    let cancelled = false
+    window.minuting
+      .getClaudeAccount()
+      .then((a) => {
+        if (!cancelled) setAccount(a)
+      })
+      .catch(() => {
+        if (!cancelled) setAccount(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.open, claude])
 
   if (!props.open) return null
 
@@ -334,19 +357,6 @@ export function SettingsModal(props: {
     }
   }
 
-  // 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막히므로 메인을 경유한다
-  // (공유 기능이 writeClipboard를 도입한 것과 같은 이유).
-  const copyInstallCommand = (): void => {
-    setCopyError(null)
-    window.minuting.writeClipboard(CLAUDE_INSTALL_COMMAND).then(
-      () => {
-        setInstallCopied(true)
-        // 되돌리지 않으면 '복사됨'이 고정돼 두 번째 복사가 됐는지 알 수 없다.
-        window.setTimeout(() => setInstallCopied(false), 2000)
-      },
-      () => setCopyError('복사에 실패했습니다 — 위 명령을 직접 복사하세요.')
-    )
-  }
 
   const checkForUpdate = (): void => {
     setUpdateError(null)
@@ -415,7 +425,13 @@ export function SettingsModal(props: {
               >
                 {claudeChecking ? '확인 중…' : '다시 확인'}
               </button>
+              {claudeStatus?.showInstall && <ClaudeInstallAction />}
+              <ClaudeLoginAction showLogin={claudeStatus?.showLogin === true} />
             </div>
+
+            {/* 어느 계정으로 로그인했는지. "사용 가능"만으로는 회사 계정과 개인 계정을 구분할 수
+                없어, 엉뚱한 계정으로 회의록을 요약하고 있어도 알아챌 방법이 없다. */}
+            {accountLabel !== null && <div className="setting-desc">계정: {accountLabel}</div>}
             {/* 실패를 삼키면 낡은 값이 그대로 남아 "다시 확인" 버튼이 거짓말을 한다. */}
             {claudeError !== null && (
               <p className="setting-error">
@@ -424,30 +440,20 @@ export function SettingsModal(props: {
               </p>
             )}
 
-            {claudeStatus !== null && claudeStatus.hint !== null && (
+            {/* 진행 중·실패 후에는 감춘다 — 안내가 가리키는 버튼 라벨이 [취소]·[다시 설치]로
+                바뀌어 화면에 없는 버튼을 가리키게 된다(SetupPanel과 같은 이유). */}
+            {claudeStatus !== null && claudeStatus.hint !== null && !claudeActionBusy && (
               <div className="setting-desc">{claudeStatus.hint}</div>
             )}
 
             {claudeStatus?.showInstall && (
               <>
-                <div className="setting-path-row">
-                  <div className="setting-path" title={CLAUDE_INSTALL_COMMAND}>
-                    {CLAUDE_INSTALL_COMMAND}
-                  </div>
-                  <button type="button" className="btn-ghost" onClick={copyInstallCommand}>
-                    {installCopied ? '복사됨' : '복사'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
-                  >
-                    설치 문서
-                  </button>
-                </div>
-                {copyError !== null && <p className="setting-error">{copyError}</p>}
+                <ClaudeInstallCommand />
+                <ClaudeInstallStatus />
               </>
             )}
+
+            <ClaudeLoginStatus showLogin={claudeStatus?.showLogin === true} />
 
             {/* 사유를 특정하지 못한 경우에만 원문이 실려 온다. 이게 없으면 '확인 실패'가 무엇
                 때문인지 알 방법이 렌더러 어디에도 남지 않는다(패키징된 앱은 콘솔을 볼 수 없다). */}

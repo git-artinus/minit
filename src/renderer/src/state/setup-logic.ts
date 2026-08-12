@@ -17,6 +17,34 @@ export type SetupView =
   | { kind: 'hidden' }
 
 /**
+ * 설치 출력에서 화면에 유지할 줄 수. 설치 스크립트는 진행률을 줄 단위로 갱신해 수천 줄이
+ * 나올 수 있는데, 전량을 상태에 쌓으면 메모리와 렌더 비용이 계속 커진다.
+ * 전문은 ~/.minit/install-claude.log에 남으므로 화면은 끝부분만 있으면 된다.
+ */
+export const INSTALL_LOG_MAX_LINES = 200
+
+/**
+ * 글자 수 상한. 줄 수만으로는 부족하다 — 진행률을 캐리지 리턴으로 갱신하는 프로그램의 출력은
+ * 아무리 길어져도 한 줄이라 줄 수 상한에 걸리지 않고, 화면에 수 MB짜리 한 줄이 쌓인다.
+ * 200줄이 각각 상당히 길어도 들어가는 크기로 잡는다.
+ */
+export const INSTALL_LOG_MAX_CHARS = 40_000
+
+/**
+ * 새 청크를 이어 붙이고 상한을 넘으면 오래된 쪽을 버린다 — 실패 원인은 보통 끝에 있다.
+ * 줄 수와 글자 수 두 상한을 모두 적용한다(둘 중 하나만으로는 한쪽 형태의 출력을 놓친다).
+ */
+export function appendInstallLog(prev: string, chunk: string): string {
+  const joined = prev + chunk
+  const capped =
+    joined.length <= INSTALL_LOG_MAX_CHARS ? joined : joined.slice(-INSTALL_LOG_MAX_CHARS)
+  const lines = capped.split('\n')
+  return lines.length <= INSTALL_LOG_MAX_LINES
+    ? capped
+    : lines.slice(-INSTALL_LOG_MAX_LINES).join('\n')
+}
+
+/**
  * 회의 시작에 필요한 구성(whisper+model)이 모두 끝났는지.
  * claude는 일부러 제외한다 — 없어도 녹음·전사는 정상 동작하므로 회의 시작을 막지 않는다.
  */

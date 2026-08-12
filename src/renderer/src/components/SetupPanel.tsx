@@ -1,7 +1,9 @@
 import { BrandMark } from './BrandLogo'
+import { ClaudeInstallAction, ClaudeInstallCommand, ClaudeInstallStatus } from './ClaudeInstallPanel'
+import { ClaudeLoginAction, ClaudeLoginStatus } from './ClaudeLoginButton'
 import { useSetup } from '../state/setup'
 import { claudeStatusView } from '../state/claude-status-view'
-import { CLAUDE_DEPENDENCY_NOTICE, CLAUDE_DOCS_URL, CLAUDE_INSTALL_COMMAND } from '../../../shared/claude-cli'
+import { CLAUDE_DEPENDENCY_NOTICE } from '../../../shared/claude-cli'
 
 const WHISPER_HINT =
   '음성 인식(받아쓰기)에 사용 — Apple Silicon Mac은 앱에 포함되어 있어 보통 이 안내가 나오지 않습니다. 계속 보인다면 Intel Mac이거나 파일 손상: 터미널에서 brew install whisper-cpp 실행'
@@ -22,8 +24,12 @@ function panelTitle(kind: string): string {
 }
 
 export function SetupPanel(): React.JSX.Element | null {
-  const { view, minimized, setMinimized, recheck, download, envError, recheckClaude, claudeChecking, claudeError } =
-    useSetup()
+  const {
+    view, minimized, setMinimized, recheck, download, envError,
+    recheckClaude, claudeChecking, claudeError, claudeLoginPhase, claudeInstallPhase
+  } = useSetup()
+  // 주 동작 버튼이 안내문이 가리키는 라벨을 벗어난 상태.
+  const claudeActionBusy = claudeLoginPhase === 'waiting' || claudeInstallPhase !== 'idle'
   if (view.kind === 'hidden') return null
   // 제목과 본문이 같은 판정을 써야 한다 — 따로 계산하면 미설치 제목 아래 로그인 안내가 뜰 수 있다.
   // 미설치·미로그인·사용량 소진은 해야 할 일이 서로 달라 제목부터 갈라진다.
@@ -132,17 +138,32 @@ export function SetupPanel(): React.JSX.Element | null {
           {view.kind === 'claude-unavailable' && claudeCard && (
             <>
               <p className="env-desc">{CLAUDE_DEPENDENCY_NOTICE}</p>
-              {claudeCard.hint !== null && <p className="env-desc">{claudeCard.hint}</p>}
-              {claudeCard.showInstall && <div className="setting-path">{CLAUDE_INSTALL_COMMAND}</div>}
+              {/* 진행 중·실패 후에는 안내를 감춘다 — 이 안내는 [Claude 로그인]·[설치하기]를
+                  누르라고 말하는데, 그 버튼이 [취소]나 [다시 설치]로 바뀌면 화면에 없는 버튼을
+                  가리킨다. 그 시점에는 진행 표시나 실패 사유가 안내를 대신한다. */}
+              {claudeCard.hint !== null && !claudeActionBusy && (
+                <p className="env-desc">{claudeCard.hint}</p>
+              )}
+              {claudeCard.showInstall && (
+                <>
+                  <ClaudeInstallCommand />
+                  <ClaudeInstallStatus />
+                </>
+              )}
+              <ClaudeLoginStatus showLogin={claudeCard.showLogin} />
               {claudeCard.detail !== null && <p className="env-error">{claudeCard.detail}</p>}
               {/* 재확인이 실패한 경우. 위 안내는 직전 확인 결과이므로 그대로 두고 사실만 덧붙인다. */}
               {claudeError !== null && (
                 <p className="env-error">상태 확인 실패: {claudeError} (위는 직전 확인 결과입니다)</p>
               )}
               <div className="setting-path-row">
+                {/* 로그인이 가능한 상태에서는 주 동작이 로그인이므로 재확인을 보조로 내린다 —
+                    주황 버튼이 둘이면 어느 쪽을 눌러야 하는지가 흐려진다. */}
                 <button
                   type="button"
-                  className="btn-primary"
+                  className={
+                    claudeCard.showLogin || claudeCard.showInstall ? 'btn-ghost' : 'btn-primary'
+                  }
                   onClick={() => {
                     recheckClaude().catch(() => {})
                   }}
@@ -150,15 +171,8 @@ export function SetupPanel(): React.JSX.Element | null {
                 >
                   {claudeChecking ? '확인 중…' : '다시 확인'}
                 </button>
-                {claudeCard.showInstall && (
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => window.minuting.openExternal(CLAUDE_DOCS_URL).catch(() => {})}
-                  >
-                    설치 문서 열기
-                  </button>
-                )}
+                {claudeCard.showInstall && <ClaudeInstallAction />}
+                <ClaudeLoginAction showLogin={claudeCard.showLogin} />
               </div>
             </>
           )}
