@@ -1,8 +1,9 @@
 import { formatStartTime, formatTimestamp, parseMeeting, serializeSection } from './meeting-file'
 import { meetingTypeDef } from './meeting-types'
-import type { ActionItem, Meeting, MeetingSection } from './types'
+import type { ActionItem, Meeting, MeetingSection, TranscriptSegment } from './types'
 
-// 공유용 페이로드 조립 — 순수 함수. 클립보드 복사(마크다운)와 .txt 내보내기(평문)가 여기서 나온다.
+// 공유용 페이로드 조립 — 순수 함수. 클립보드 복사(요약 마크다운·트랜스크립트 평문)와
+// .txt 내보내기(평문)가 여기서 나온다.
 // Slack 발송은 mrkdwn 이스케이프가 필요해 slack.ts가 따로 담당한다.
 
 // 저장된 오프셋 표기를 문자열로 읽는다(뷰어 타임존 무관) — MeetingDetail 표시 방식과 동일하다.
@@ -58,6 +59,12 @@ export function buildPlainText(m: Meeting): string {
     blocks.push(plainBlock('트랜스크립트', lines))
   }
   return blocks.join('\n\n')
+}
+
+// 트랜스크립트만 담는 평문. MeetingDetail이 화면에 렌더하는 병합 문단 배열을 그대로 받는다 —
+// 여기서 다시 mergeParagraphs를 부르면 병합 조건이 바뀔 때 화면과 복사 결과가 조용히 어긋난다.
+export function buildTranscriptText(paragraphs: TranscriptSegment[]): string {
+  return paragraphs.map((p) => `${formatTimestamp(p.startMs)} ${p.text}`).join('\n')
 }
 
 export type ExportFormat = 'md' | 'txt'

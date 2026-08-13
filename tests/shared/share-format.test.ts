@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { buildPlainText, buildShareMarkdown, exportContent, exportFileName } from '../../src/shared/share-format'
+import {
+  buildPlainText,
+  buildShareMarkdown,
+  buildTranscriptText,
+  exportContent,
+  exportFileName
+} from '../../src/shared/share-format'
 import { serializeMeeting } from '../../src/shared/meeting-file'
 import type { Meeting } from '../../src/shared/types'
 
@@ -99,6 +105,25 @@ describe('buildPlainText', () => {
 
   test('트랜스크립트가 없으면 트랜스크립트 블록을 생략한다', () => {
     expect(buildPlainText({ ...meeting, segments: [] })).not.toContain('트랜스크립트')
+  })
+})
+
+describe('buildTranscriptText', () => {
+  test('문단마다 타임스탬프와 텍스트를 한 줄로 담는다', () => {
+    const text = buildTranscriptText([
+      { startMs: 12_000, text: '오늘 스프린트 목표부터 정리하겠습니다.' },
+      { startMs: 45_000, text: '지난주 이슈 공유드립니다.' }
+    ])
+    expect(text).toBe(
+      [
+        '[00:00:12] 오늘 스프린트 목표부터 정리하겠습니다.',
+        '[00:00:45] 지난주 이슈 공유드립니다.'
+      ].join('\n')
+    )
+  })
+
+  test('문단이 없으면 빈 문자열이다', () => {
+    expect(buildTranscriptText([])).toBe('')
   })
 })
 

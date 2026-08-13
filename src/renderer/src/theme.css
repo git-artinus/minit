@@ -474,6 +474,14 @@ article h2::before {
   content: ''; display: inline-block; width: 3px; height: 12px;
   background: var(--color-primary); border-radius: 2px;
 }
+/* 섹션 제목과 그 섹션의 액션 버튼을 한 행에 둔다. h2가 자체 margin-bottom을 갖고 있어 그대로
+   flex 행에 넣으면 버튼과 세로 중심이 어긋나므로, 아래 여백은 래퍼가 대신 갖는다. */
+.section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); margin-bottom: var(--sp-3);
+}
+.section-head h2 { margin-bottom: 0; }
+
 article section > p { line-height: 1.75; font-size: var(--fs-base); }
 
 article ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
