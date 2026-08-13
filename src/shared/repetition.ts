@@ -8,8 +8,15 @@ export interface RepetitionSpan {
 }
 
 // 캘리브레이션 대상(코퍼스로 조정) — 짧은 실제 맞장구는 제외하고 지속된 hallucination loop만 잡는다.
+
+// 세그먼트 원본이 남은 회의 1건(25분·332 세그먼트) 기준, 실제 발화의 연속 동일 세그먼트 최대 run은 2회다.
 const MIN_REPEAT_COUNT = 6
-const MIN_SPAN_MS = 60_000
+
+// 6회 반복에 20초를 요구하면 세그먼트당 평균 3.3초 이상이라, whisper가 보통 한 세그먼트로 묶어
+// 출력하는 실제 맞장구는 걸리지 않는다.
+// TODO: 2026-08-13 loop 표본 1건(44초·9회)에 기댄 잠정값이다. 표본을 모으려면 raw 세그먼트
+// 보존이 선행돼야 하는데 #55가 NOT_PLANNED로 닫혀 현재 수단이 없다.
+const MIN_SPAN_MS = 20_000
 
 // 공백·구두점을 제거해 "구두점만 다른" 반복을 동일 텍스트로 본다.
 function normalize(text: string): string {
