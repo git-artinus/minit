@@ -30,5 +30,5 @@ minit은 공개 저장소로 개발되며, 이슈 상태가 저장소만 봐도 
 ## 그 외 규칙
 
 - 커밋 메시지·PR·리뷰는 한국어, Conventional Commits(`feat:`/`fix:`/…)를 따른다.
-- 머지는 merge commit 방식을 사용하고 squash 머지는 금지한다(개별 커밋 이력 보존).
+- 머지는 squash 머지를 기본으로 한다.
 - `main` 직접 커밋 금지 — 모든 변경은 `feature/*`·`fix/*`·`docs/*` 브랜치 → PR을 거친다.
