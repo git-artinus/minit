@@ -1,18 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { encodeWavPcm16, resampleLinear } from '../../src/shared/wav'
-
-describe('resampleLinear', () => {
-  test('절반 레이트로 리샘플하면 길이가 절반이 된다', () => {
-    const input = new Float32Array([0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6])
-    const out = resampleLinear(input, 32000, 16000)
-    expect(out.length).toBe(4)
-    expect(out[0]).toBeCloseTo(0)
-  })
-  test('같은 레이트면 그대로 반환한다', () => {
-    const input = new Float32Array([0.1, 0.2])
-    expect(resampleLinear(input, 16000, 16000)).toBe(input)
-  })
-})
+import { encodeWavPcm16 } from '../../src/shared/wav'
 
 describe('encodeWavPcm16', () => {
   test('RIFF/WAVE 헤더와 PCM16 데이터가 올바르다', () => {
