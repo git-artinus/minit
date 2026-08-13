@@ -17,6 +17,7 @@ minit은 공개 저장소로 개발되며, 이슈 상태가 저장소만 봐도 
 
 ## 릴리즈 노트
 
+- **릴리즈 제목은 태그와 똑같이 `vX.Y.Z`로 쓴다(필수).**
 - GitHub Release 본문은 [.github/RELEASE_TEMPLATE.md](.github/RELEASE_TEMPLATE.md) 서식을 따른다.
 - **한 항목은 줄바꿈 없이 한 줄로 쓴다(필수).** 릴리즈 본문은 GFM(hardbreaks)으로 렌더링돼
   줄바꿈 하나가 그대로 `<br>`이 된다. `CHANGELOG.md` 같은 레포 안의 `.md` 파일은 이 동작이
