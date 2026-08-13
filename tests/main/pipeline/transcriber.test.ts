@@ -12,7 +12,7 @@ function jsonOf(segs: { from: number; to: number; text: string }[]): string {
 }
 
 describe('transcribeRaw', () => {
-  test('최초 전사에 -mc 64를 적용하고 원본 세그먼트를 반환한다', async () => {
+  test('최초 전사에 -mc 0을 적용하고 원본 세그먼트를 반환한다', async () => {
     const calls: string[][] = []
     const run: RunCommand = async (_cmd, args) => {
       calls.push(args)
@@ -22,7 +22,7 @@ describe('transcribeRaw', () => {
     const segs = await transcribeRaw({ ...baseDeps, run, readFile })
     const args = calls[0]
     expect(args).toContain('-mc')
-    expect(args[args.indexOf('-mc') + 1]).toBe('64')
+    expect(args[args.indexOf('-mc') + 1]).toBe('0')
     expect(segs).toEqual([{ startMs: 0, endMs: 2000, text: '발화' }])
   })
 })

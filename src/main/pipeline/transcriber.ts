@@ -25,12 +25,14 @@ export interface TranscribeDeps {
   readFile: (p: string) => string
 }
 
-// 최초 전사 — 문맥 상한 -mc 64(P2)로 previous-text 조건화 루프 위험을 낮춘다(whisper.cpp#2286 권장).
+// 최초 전사 — previous-text 조건화를 아예 끊는다(-mc 0). 상한을 64로 두면 조건화가 남아
+// hallucination loop이 실제로 발생한다(회의 4건 실측: -mc 64에서 최대 18회/37초 반복,
+// -mc 0에서 4건 모두 3회 이상 반복 0건 + 실제 발화 6~11% 복원). whisper.cpp#2286 권장.
 // 병합은 하지 않고 원본 세그먼트를 반환한다(반복 탐지는 병합 전 세그먼트에서 정확).
 export async function transcribeRaw(deps: TranscribeDeps): Promise<MergeableSegment[]> {
   const outBase = path.join(deps.workDir, path.basename(deps.wavPath, '.wav'))
   await deps.run(deps.whisperPath ?? 'whisper-cli', [
-    '-m', deps.modelPath, '-f', deps.wavPath, '-l', 'ko', '-mc', '64', '-oj', '-of', outBase,
+    '-m', deps.modelPath, '-f', deps.wavPath, '-l', 'ko', '-mc', '0', '-oj', '-of', outBase,
   ])
   return parseWhisperSegments(deps.readFile(outBase + '.json'))
 }
