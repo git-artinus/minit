@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatStartTime, formatTimestamp, summaryParagraphs } from '../../../shared/meeting-file'
+import { buildTranscriptText } from '../../../shared/share-format'
 import { mergeParagraphs } from '../../../shared/transcript'
 import { meetingTypeDef } from '../../../shared/meeting-types'
-import type { MeetingSection, SummaryFailure } from '../../../shared/types'
+import type { MeetingSection, SummaryFailure, TranscriptSegment } from '../../../shared/types'
 import { useMeetings } from '../state/meetings'
 import { summaryFailureView } from '../state/summary-failure'
 import { ShareMeetingModal } from './ShareMeetingModal'
@@ -42,6 +43,44 @@ function SummaryFailureNotice({ failure }: { failure: SummaryFailure }): React.J
       <p className="setting-desc">{view.hint}</p>
       {failure.detail.trim() !== '' && <div className="summary-failure-detail">{failure.detail}</div>}
     </div>
+  )
+}
+
+const COPY_IDLE_LABEL = '전체 복사'
+
+// 트랜스크립트를 클립보드로 복사한다. 결과는 버튼 라벨로만 알린다 — 별도 알림 영역을 만들면
+// 스크롤 위치에 따라 안내가 화면 밖에 있을 수 있다.
+function TranscriptCopyButton(props: { paragraphs: TranscriptSegment[] }): React.JSX.Element {
+  const [label, setLabel] = useState(COPY_IDLE_LABEL)
+  const revertRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (revertRef.current !== null) window.clearTimeout(revertRef.current)
+    }
+  }, [])
+
+  // 라벨을 되돌리지 않으면 결과가 고정돼 두 번째 복사가 됐는지 알 수 없다. 연속 클릭 시
+  // 이전 타이머가 남아 있으면 새 라벨을 일찍 지우므로 함께 정리한다.
+  const flash = (next: string): void => {
+    setLabel(next)
+    if (revertRef.current !== null) window.clearTimeout(revertRef.current)
+    revertRef.current = window.setTimeout(() => setLabel(COPY_IDLE_LABEL), 2000)
+  }
+
+  // 렌더러가 file:// 오리진으로 로드될 때 navigator.clipboard가 막히므로 메인을 경유한다
+  // (공유 기능이 writeClipboard를 도입한 것과 같은 이유).
+  const copy = (): void => {
+    window.minuting.writeClipboard(buildTranscriptText(props.paragraphs)).then(
+      () => flash('복사됨'),
+      () => flash('복사 실패')
+    )
+  }
+
+  return (
+    <button type="button" className="btn-ghost" onClick={copy}>
+      {label}
+    </button>
   )
 }
 
@@ -173,7 +212,10 @@ export function MeetingDetail(): React.JSX.Element {
         </section>
       ))}
       <section>
-        <h2>트랜스크립트</h2>
+        <div className="section-head">
+          <h2>트랜스크립트</h2>
+          {paragraphs.length > 0 && <TranscriptCopyButton paragraphs={paragraphs} />}
+        </div>
         <div className="transcript">
           {paragraphs.map((s, i) => (
             <p key={i}><span className="ts">{formatTimestamp(s.startMs)}</span> {s.text}</p>
