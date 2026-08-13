@@ -1,10 +1,10 @@
 import { encodeWavPcm16 } from '../../../shared/wav'
 
-// 앱은 리샘플을 직접 하지 않는다 — 16kHz 변환은 whisper-cli(miniaudio)가 처리한다.
-// 기존에는 저역통과 없는 선형 보간으로 48kHz를 16kHz로 내렸는데, 에일리어싱이 그대로 접혀
-// 들어가는 잘못된 다운샘플이고 피크 메모리도 더 썼다(회의 4건 실측 근거는 #57).
-// 24kHz는 음성 대역(8kHz 이하)을 온전히 담으면서 WAV 크기를 48kHz의 절반으로 유지한다.
-const DECODE_RATE = 24_000
+// whisper.cpp 요구 레이트로 바로 디코드한다 — decodeAudioData가 컨텍스트 레이트로 리샘플하며
+// 저역통과는 브라우저(Chromium sinc) 구현이 처리한다. 기존의 직접 선형 보간은 저역통과가 없어
+// 에일리어싱이 접혀 들어가는 잘못된 다운샘플이었다(회의 4건 실측 근거는 #57).
+// 16kHz 고정인 이유: PATH 폴백 whisper-cli(구버전 brew·자가 빌드)는 16kHz WAV만 받는다.
+const DECODE_RATE = 16_000
 
 export async function webmToWav(blob: Blob): Promise<ArrayBuffer> {
   const ctx = new OfflineAudioContext(1, 1, DECODE_RATE)
