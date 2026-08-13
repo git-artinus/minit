@@ -25,25 +25,30 @@ export interface TranscribeDeps {
   readFile: (p: string) => string
 }
 
-// 최초 전사 — 문맥 상한 -mc 64(P2)로 previous-text 조건화 루프 위험을 낮춘다(whisper.cpp#2286 권장).
-// 병합은 하지 않고 원본 세그먼트를 반환한다(반복 탐지는 병합 전 세그먼트에서 정확).
+// 공통 디코딩 인자 — previous-text 조건화를 아예 끊는다(-mc 0). 상한을 64로 두면 조건화가
+// 남아 hallucination loop이 실제로 발생한다(회의 4건 실측: -mc 64에서 최대 18회/37초 반복,
+// -mc 0에서 4건 모두 3회 이상 반복 0건 + 실제 발화 6~11% 복원). whisper.cpp#2286 권장.
+// 두 전사 경로가 반드시 같은 값을 쓰도록 한 곳에서 조립한다.
+function baseArgs(deps: TranscribeDeps): string[] {
+  return ['-m', deps.modelPath, '-f', deps.wavPath, '-l', 'ko', '-mc', '0']
+}
+
+// 최초 전사 — 병합은 하지 않고 원본 세그먼트를 반환한다(반복 탐지는 병합 전 세그먼트에서 정확).
 export async function transcribeRaw(deps: TranscribeDeps): Promise<MergeableSegment[]> {
   const outBase = path.join(deps.workDir, path.basename(deps.wavPath, '.wav'))
-  await deps.run(deps.whisperPath ?? 'whisper-cli', [
-    '-m', deps.modelPath, '-f', deps.wavPath, '-l', 'ko', '-mc', '64', '-oj', '-of', outBase,
-  ])
+  await deps.run(deps.whisperPath ?? 'whisper-cli', [...baseArgs(deps), '-oj', '-of', outBase])
   return parseWhisperSegments(deps.readFile(outBase + '.json'))
 }
 
-// 반복 구간만 재전사 — -mc 0으로 이전 텍스트 조건화를 끊고 -ot/-d로 시간범위를 한정한다.
-// 반환 offset은 절대값이라 스플라이스가 그대로 성립한다.
+// 반복 구간만 재전사 — -ot/-d로 시간범위를 한정한다. 디코딩 설정은 최초 전사와 동일하므로
+// 유일한 차이는 창 재정렬이다. 오디오 기인 반복은 그대로 재현될 수 있고, 그때는 flagged로
+// 표시되는 best-effort 복구다. 반환 offset은 절대값이라 스플라이스가 그대로 성립한다.
 export async function retranscribeSpan(
   deps: TranscribeDeps, startMs: number, endMs: number,
 ): Promise<MergeableSegment[]> {
   const outBase = path.join(deps.workDir, `${path.basename(deps.wavPath, '.wav')}-repair-${startMs}`)
   await deps.run(deps.whisperPath ?? 'whisper-cli', [
-    '-m', deps.modelPath, '-f', deps.wavPath, '-l', 'ko', '-mc', '0',
-    '-ot', String(startMs), '-d', String(endMs - startMs), '-oj', '-of', outBase,
+    ...baseArgs(deps), '-ot', String(startMs), '-d', String(endMs - startMs), '-oj', '-of', outBase,
   ])
   return parseWhisperSegments(deps.readFile(outBase + '.json'))
 }

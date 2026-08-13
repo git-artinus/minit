@@ -1,24 +1,3 @@
-export const TARGET_RATE = 16000 // whisper.cpp 요구 샘플레이트
-
-export function resampleLinear(
-  input: Float32Array,
-  fromRate: number,
-  toRate: number
-): Float32Array {
-  if (fromRate === toRate) return input
-  const ratio = fromRate / toRate
-  const outLength = Math.floor(input.length / ratio)
-  const out = new Float32Array(outLength)
-  for (let i = 0; i < outLength; i++) {
-    const pos = i * ratio
-    const left = Math.floor(pos)
-    const right = Math.min(left + 1, input.length - 1)
-    const frac = pos - left
-    out[i] = input[left] * (1 - frac) + input[right] * frac
-  }
-  return out
-}
-
 export function encodeWavPcm16(samples: Float32Array, sampleRate: number): ArrayBuffer {
   const buf = new ArrayBuffer(44 + samples.length * 2)
   const view = new DataView(buf)
@@ -37,9 +16,10 @@ export function encodeWavPcm16(samples: Float32Array, sampleRate: number): Array
   view.setUint16(34, 16, true)
   writeStr(36, 'data')
   view.setUint32(40, samples.length * 2, true)
-  samples.forEach((s, i) => {
-    const clamped = Math.max(-1, Math.min(1, s))
+  // 회의 1시간이면 수천만 샘플이라 콜백 없이 인덱스 루프로 쓴다(종료 직후 UI 멈춤 방지).
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]))
     view.setInt16(44 + i * 2, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true)
-  })
+  }
   return buf
 }
